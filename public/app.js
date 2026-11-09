@@ -1,6 +1,6 @@
 const $ = selector => document.querySelector(selector);
 const elements = {
-  grid: $('#channels-grid'), queue: $('#queue-items'), stage: $('#player-stage'), video: $('#video'),
+  grid: $('#channels-grid'), queue: $('#queue-items'), stage: $('#player-stage'), video: $('#video'), embed: $('#embedded-player'), embedActions: $('#embed-actions'),
   poster: $('#poster-screen'), error: $('#player-error'), play: $('#play-main'),
   current: $('#current-title'), subtitle: $('#current-subtitle'), posterTitle: $('#poster-channel'),
   currentLogo: $('#now-logo'), favorite: $('#favorite-current'), official: $('#official-link'),
@@ -46,14 +46,14 @@ function selectChannel(channel, shouldPlay = false) {
   remember('opentv-last-channel', channel.id);
   updateNowPlaying(channel);
   render();
-  if (shouldPlay) playStream();
+  if (shouldPlay) playChannel();
 }
 
 function updateNowPlaying(channel) {
   elements.current.textContent = channel.name;
   elements.subtitle.textContent = `${channel.broadcaster} · ${channel.region}`;
   elements.posterTitle.textContent = channel.name.toUpperCase();
-  $('#poster-subtitle').textContent = channel.streams.length ? `${channel.broadcaster} · Señal online oficial` : 'Disponible a través de la web oficial';
+  $('#poster-subtitle').textContent = channel.streams.length || channel.embedUrl ? `${channel.broadcaster} · Emisión online oficial` : 'Disponible a través de la web oficial';
   const newLogo = logoContent(channel, 'now-logo');
   elements.currentLogo.replaceWith(newLogo);
   elements.currentLogo = newLogo;
@@ -61,12 +61,13 @@ function updateNowPlaying(channel) {
   elements.favorite.classList.toggle('is-favorite', state.favorites.has(channel.id));
   elements.favorite.title = state.favorites.has(channel.id) ? 'Quitar de favoritos' : 'Añadir a favoritos';
   elements.favorite.setAttribute('aria-label', elements.favorite.title);
-  for (const link of [elements.official, $('#error-official-link')]) {
+  for (const link of [elements.official, $('#error-official-link'), $('#embed-official-link')]) {
     link.hidden = !channel.website;
     if (channel.website) link.href = channel.website;
     else link.removeAttribute('href');
   }
-  $('#quality-tag').textContent = channel.streams.length ? 'EN VIVO' : 'SOLO WEB';
+  $('#quality-tag').textContent = channel.streams.length || channel.embedUrl ? 'EN VIVO' : 'SOLO WEB';
+  $('#retry-button').hidden = !channel.streams.length && !channel.embedUrl;
 }
 
 function stopPlayback() {
@@ -75,7 +76,10 @@ function stopPlayback() {
   elements.video.pause();
   elements.video.removeAttribute('src');
   elements.video.load();
-  elements.stage.classList.remove('is-playing');
+  elements.embed.removeAttribute('src');
+  elements.embed.hidden = true;
+  elements.embedActions.hidden = true;
+  elements.stage.classList.remove('is-playing', 'is-embedded');
   elements.error.hidden = true;
   elements.poster.hidden = false;
   state.started = false;
@@ -84,30 +88,59 @@ function stopPlayback() {
 function showPlaybackError(title, description) {
   elements.error.hidden = false;
   elements.poster.hidden = true;
-  elements.stage.classList.remove('is-playing');
+  elements.stage.classList.remove('is-playing', 'is-embedded');
+  elements.embed.hidden = true;
+  elements.embedActions.hidden = true;
   $('#error-title').textContent = title;
   $('#error-description').textContent = description;
+}
+
+function playEmbedded() {
+  const channel = activeChannel();
+  if (!channel?.embedUrl) return;
+  stopPlayback();
+  elements.embed.title = `Emisión oficial de ${channel.name}`;
+  elements.embed.src = channel.embedUrl;
+  elements.embed.hidden = false;
+  elements.embedActions.hidden = false;
+  $('#try-hls-button').hidden = !channel.streams.length;
+  elements.poster.hidden = true;
+  elements.stage.classList.add('is-embedded');
+  state.started = true;
+}
+
+function playChannel() {
+  const channel = activeChannel();
+  if (!channel) return;
+  if (channel.embedUrl && (channel.preferEmbed || !channel.streams.length)) playEmbedded();
+  else playStream(0);
 }
 
 async function playStream(index = state.sourceIndex) {
   const channel = activeChannel();
   if (!channel) return;
   if (!channel.streams.length) {
+    if (channel.embedUrl) return playEmbedded();
     showPlaybackError('Sin señal directa disponible', 'Esta cadena solo ofrece su emisión en su propia web. Puedes abrirla con el botón inferior.');
     return;
   }
   if (index >= channel.streams.length) {
+    if (channel.embedUrl) return playEmbedded();
     showPlaybackError('No podemos reproducir este canal aquí', 'La cadena puede limitar el acceso por ubicación, formato o permisos del navegador. Prueba la web oficial.');
     return;
   }
   state.sourceIndex = index;
   const attempt = ++state.playbackAttempt;
   if (state.hls) { state.hls.destroy(); state.hls = null; }
+  elements.embed.removeAttribute('src');
+  elements.embed.hidden = true;
+  elements.embedActions.hidden = true;
   elements.video.pause();
   elements.video.removeAttribute('src');
   elements.video.load();
   elements.poster.hidden = true;
   elements.error.hidden = true;
+  elements.stage.classList.remove('is-embedded');
   elements.stage.classList.add('is-playing');
   state.started = true;
   const url = channel.streams[index];
@@ -140,10 +173,11 @@ async function playStream(index = state.sourceIndex) {
 }
 
 elements.video.addEventListener('error', () => {
-  if (state.started && !state.hls) playStream(state.sourceIndex + 1);
+  if (state.started && !state.hls && elements.stage.classList.contains('is-playing')) playStream(state.sourceIndex + 1);
 });
-elements.play.addEventListener('click', () => playStream());
-$('#retry-button').addEventListener('click', () => playStream(0));
+elements.play.addEventListener('click', playChannel);
+$('#retry-button').addEventListener('click', playChannel);
+$('#try-hls-button').addEventListener('click', () => playStream(0));
 $('#fullscreen-button').addEventListener('click', () => {
   if (document.fullscreenElement) document.exitFullscreen();
   else if (elements.stage.requestFullscreen) elements.stage.requestFullscreen();
@@ -181,8 +215,8 @@ function makeCard(channel) {
   const name = document.createElement('div'); name.className = 'card-name'; name.textContent = channel.name;
   const region = document.createElement('div'); region.className = 'card-region'; region.textContent = channel.region;
   const foot = document.createElement('div'); foot.className = 'card-foot';
-  const signal = document.createElement('span'); signal.className = channel.streams.length ? '' : 'not-embedded';
-  signal.textContent = channel.streams.length ? '● SEÑAL ONLINE' : '↗ WEB OFICIAL';
+  const signal = document.createElement('span'); signal.className = channel.streams.length || channel.embedUrl ? '' : 'not-embedded';
+  signal.textContent = channel.embedUrl ? '● PLAYER OFICIAL' : channel.streams.length ? '● SEÑAL ONLINE' : '↗ WEB OFICIAL';
   const arrow = document.createElement('span'); arrow.textContent = '↗';
   foot.append(signal, arrow); card.append(header, name, region, foot);
   return card;
@@ -205,7 +239,7 @@ function makeQueueItem(channel) {
 function render() {
   const filtered = state.channels.filter(matches);
   elements.grid.replaceChildren(...filtered.map(makeCard));
-  const queue = state.channels.filter(c => c.streams.length).slice(0, 18);
+  const queue = state.channels.slice(0, 18);
   elements.queue.replaceChildren(...queue.map(makeQueueItem));
   $('#queue-counter').textContent = `${queue.length} CANALES`;
   $('#channel-count').textContent = `${filtered.length} / ${state.channels.length}`;

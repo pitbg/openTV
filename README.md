@@ -1,12 +1,14 @@
 # openTV 📺
 
-**La televisión pública española, en directo desde tu navegador.** Un proyecto personal y autoalojado, sin cuentas de usuario ni retransmisiones de vídeo en el servidor.
+**La televisión española, en directo desde tu navegador.** Un proyecto personal y autoalojado, sin cuentas de usuario propias ni retransmisiones de vídeo en el servidor.
 
 ![Node.js](https://img.shields.io/badge/Node.js-22-67b947) ![Docker](https://img.shields.io/badge/Docker-Compose-2496ed) ![HLS](https://img.shields.io/badge/Video-HLS-eab676)
 
-## Qué incluye la v0.1
+## Qué incluye la v0.2
 
-- Canales públicos nacionales (RTVE) y autonómicos (Telemadrid, Canal Sur, TV3, ETB, TVG, À Punt, Aragón TV y más) cuando figuran en el catálogo.
+- Canales públicos nacionales (RTVE) y autonómicos (Telemadrid, Canal Sur, TV3, ETB, TVG, À Punt, Aragón TV y más) cuando figuran en el catálogo, además de una selección de cadenas privadas nacionales.
+- **Antena 3:** reproductor oficial incrustado de Atresplayer, con enlace al directo. **Telecinco:** acceso a la emisión de Mediaset Infinity, que no ofrece un HLS público en el catálogo utilizado.
+- **La 1:** utiliza de forma preferente el reproductor incrustado oficial de RTVE; permite probar su enlace HLS como alternativa.
 - Reproducción HLS nativa (Safari) o con [HLS.js](https://github.com/video-dev/hls.js/) (Chrome/Firefox/Edge).
 - Búsqueda, filtros por ámbito o comunidad autónoma, favoritos y último canal visto (guardados en el propio navegador).
 - Pantalla completa, cambio rápido entre canales y navegación con flechas izquierda/derecha.
@@ -14,7 +16,7 @@
 - Catálogo de [TDTChannels](https://www.tdtchannels.com/listas/) actualizado cada 6 horas, con caché en memoria y último resultado correcto si la fuente falla temporalmente.
 - Interfaz adaptada a móvil y escritorio, y API `/api/channels` + `/api/health`.
 
-**Importante:** algunos canales están geobloqueados, usan DRM, requieren permisos CORS especiales o cambian sus URLs. openTV **no** elude estas restricciones. La disponibilidad dentro del reproductor depende de cada emisora; en esos casos utiliza el enlace a su sitio web oficial. Las emisiones se descargan directamente del emisor al navegador: el contenedor no actúa como proxy de vídeo.
+**Importante:** algunos canales están geobloqueados, usan DRM, requieren permisos CORS especiales, exigen iniciar sesión en sus plataformas o cambian sus URLs. openTV **no** elude estas restricciones. La disponibilidad dentro del reproductor depende de cada emisora, incluso con los reproductores incrustados; en esos casos utiliza el enlace a su sitio web oficial. Las emisiones se descargan directamente del emisor al navegador: el contenedor no actúa como proxy de vídeo.
 
 ## Instalar en tu servidor con Docker
 
@@ -73,9 +75,9 @@ npm test
 
 ## Cómo funciona
 
-1. El backend consulta el JSON publicado por TDTChannels y escoge únicamente los nombres de emisoras públicas mantenidos en `lib/catalog.mjs`. Si un canal no aparece en esa fuente, no se presenta como disponible.
-2. La API devuelve nombre, comunidad, logo, web oficial y varias URLs HLS cuando existen.
-3. El navegador reproduce el HLS y prueba fuentes alternativas si una falla; no se almacenan ni redistribuyen los segmentos de vídeo.
+1. El backend consulta el JSON publicado por TDTChannels y escoge los canales incluidos en `lib/catalog.mjs`. Las excepciones editoriales (como Antena 3, que no figura en ese JSON) tienen su ficha y URL oficial incorporadas explícitamente.
+2. La API devuelve nombre, comunidad, logo, web oficial, reproductor incrustado oficial si existe y varias URLs HLS cuando están publicadas.
+3. El navegador reproduce el HLS o carga el reproductor oficial y prueba alternativas si una señal HLS falla; no se almacenan ni redistribuyen los segmentos de vídeo.
 4. Tus favoritos se guardan en `localStorage`. No hay base de datos ni seguimiento de usuarios.
 
 ### Limitaciones y próximas mejoras
@@ -84,4 +86,4 @@ npm test
 - Mejorar el control con mando en Android TV y añadir PWA instalable.
 - Monitorizar de forma no intrusiva las fuentes y permitir configurar emisoras locales adicionales.
 
-La lista de enlaces y los logos pertenecen a sus respectivos titulares. Datos atribuidos a [TDTChannels](https://github.com/LaQuay/TDTChannels) y sujetos a sus [condiciones de uso](https://www.tdtchannels.com/aviso-legal/). openTV no está afiliado a RTVE ni a los operadores regionales.
+La lista de enlaces y los logos pertenecen a sus respectivos titulares. Datos atribuidos a [TDTChannels](https://github.com/LaQuay/TDTChannels) y sujetos a sus [condiciones de uso](https://www.tdtchannels.com/aviso-legal/). openTV no está afiliado a RTVE, Atresmedia, Mediaset ni a los operadores regionales.

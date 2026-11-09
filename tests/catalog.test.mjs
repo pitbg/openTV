@@ -11,7 +11,7 @@ const sample = {
         { format: 'm3u8', url: 'http://insecure.test/stream.m3u8' },
         { format: 'youtube', url: 'https://youtube.com/live/foo' }
       ], extra_info: ['GEO'] },
-      { name: 'Telecinco', web: 'https://private.example', options: [{ format: 'm3u8', url: 'https://private.example/tv.m3u8' }] }
+      { name: 'Telecinco', web: 'https://www.mediasetinfinity.es/directo/telecinco/', options: [] }
     ] },
     { name: 'Informativos', channels: [{ name: '24h', web: 'https://www.rtve.es/play/', options: [] }] },
     { name: 'C. de Madrid', channels: [{ name: 'Telemadrid', web: 'https://www.telemadrid.es/', options: [{ format: 'm3u8', url: 'https://example.com/tm.m3u8' }] }] },
@@ -24,13 +24,19 @@ test('normalización de nombres y acentos', () => {
   assert.equal(normalize('À Punt'), 'a punt');
 });
 
-test('selecciona solo emisoras públicas y opciones HLS HTTPS sin duplicados', () => {
+test('selecciona canales oficiales, incluida TV privada sin HLS, y descarta fuentes inseguras', () => {
   const parsed = parseCatalog(sample);
-  assert.deepEqual(parsed.map(c => c.id), ['la-1', '24h', 'telemadrid', 'canal-sur']);
+  assert.deepEqual(parsed.map(c => c.id), ['la-1', '24h', 'antena-3', 'telecinco', 'telemadrid', 'canal-sur']);
   assert.deepEqual(parsed[0].streams, ['https://example.com/la1.m3u8']);
+  assert.match(parsed[0].embedUrl, /secure-embed\.rtve\.es/);
+  assert.equal(parsed[0].preferEmbed, true);
   assert.equal(parsed[0].restricted, true);
   assert.equal(parsed[1].streams.length, 0);
-  assert.equal(parsed[2].region, 'Madrid');
+  assert.match(parsed[2].embedUrl, /embebido-directos\/antena3/);
+  assert.equal(parsed[2].streams.length, 0);
+  assert.equal(parsed[3].streams.length, 0);
+  assert.equal(parsed[3].website, 'https://www.mediasetinfinity.es/directo/telecinco/');
+  assert.equal(parsed[4].region, 'Madrid');
 });
 
 test('rechaza formatos de catálogo inesperados', () => {
@@ -50,10 +56,10 @@ test('mantiene la última versión correcta si falla la actualización', async (
   };
   const service = createCatalogService({ fetchImpl, now: () => time, ttlMs: 1000 });
   const first = await service.get();
-  assert.equal(first.channels.length, 5);
+  assert.equal(first.channels.length, 7);
   time = 2001;
   const second = await service.get();
-  assert.equal(second.channels.length, 5);
+  assert.equal(second.channels.length, 7);
   assert.equal(second.stale, true);
   assert.equal(calls, 2);
   await service.get();
