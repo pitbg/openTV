@@ -68,6 +68,24 @@ test('convierte audio DVB MP2 a AAC y conserva H.264 mediante el proxy', { skip:
     assert.ok(codecs.some(stream => stream.codec_type === 'video' && stream.codec_name === 'h264'));
     assert.ok(codecs.some(stream => stream.codec_type === 'audio' && stream.codec_name === 'aac'));
     assert.ok(!codecs.some(stream => stream.codec_name === 'mp2'));
+
+    // Firefox/macOS puede fallar al decodificar algunos GOP H.264 con MSE.
+    // La vía de compatibilidad debe generar un nuevo H.264 progresivo a 720p.
+    const compatible = await fetch(`http://127.0.0.1:${appPort}/api/vbox/stream/telecinco?video=progressive`, { signal: AbortSignal.timeout(15_000) });
+    assert.equal(compatible.status, 200);
+    const compatibleBytes = Buffer.from(await compatible.arrayBuffer());
+    const compatibleProbe = spawnSync('ffprobe', [
+      '-v', 'error', '-show_entries', 'stream=codec_type,codec_name,profile,width,height,field_order',
+      '-of', 'json', '-i', 'pipe:0'
+    ], { input: compatibleBytes, maxBuffer: 2 * 1024 * 1024 });
+    assert.equal(compatibleProbe.status, 0, compatibleProbe.stderr.toString());
+    const compatibleCodecs = JSON.parse(compatibleProbe.stdout).streams;
+    const video = compatibleCodecs.find(stream => stream.codec_type === 'video');
+    assert.equal(video.codec_name, 'h264');
+    assert.equal(video.width, 1280);
+    assert.equal(video.height, 720);
+    assert.equal(video.field_order, 'progressive');
+    assert.ok(compatibleCodecs.some(stream => stream.codec_type === 'audio' && stream.codec_name === 'aac'));
   } finally {
     app.kill('SIGTERM');
     await new Promise(resolve => upstream.close(resolve));

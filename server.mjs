@@ -26,8 +26,8 @@ const server = createServer(async (request, response) => {
   response.setHeader('X-Frame-Options', 'DENY');
   if (request.method !== 'GET' && request.method !== 'HEAD') return reply(response, 405, { error: 'Método no permitido' });
 
-  let pathname;
-  try { pathname = new URL(request.url, 'http://localhost').pathname; }
+  let pathname, parsedUrl;
+  try { parsedUrl = new URL(request.url, 'http://localhost'); pathname = parsedUrl.pathname; }
   catch { return reply(response, 400, { error: 'URL inválida' }); }
 
   if (pathname === '/api/channels' || pathname === '/api/health') {
@@ -39,7 +39,7 @@ const server = createServer(async (request, response) => {
   }
 
   const vboxStream = /^\/api\/vbox\/stream\/([a-z0-9-]+)$/.exec(pathname);
-  if (vboxStream) return proxyVBox(request, response, vboxStream[1]);
+  if (vboxStream) return proxyVBox(request, response, vboxStream[1], parsedUrl.searchParams.get('video') === 'progressive');
 
   if (pathname === '/api/streams/antena-3' || pathname === '/api/streams/telecinco') {
     response.setHeader('Cache-Control', 'no-store');
@@ -64,7 +64,7 @@ const server = createServer(async (request, response) => {
   } catch { reply(response, 404, { error: 'No encontrado' }); }
 });
 
-async function proxyVBox(request, response, channelId) {
+async function proxyVBox(request, response, channelId, transcodeVideo = false) {
   response.setHeader('Cache-Control', 'no-store');
   let streamUrl;
   try { streamUrl = await vbox.getStreamUrl(channelId); }
@@ -78,7 +78,7 @@ async function proxyVBox(request, response, channelId) {
   try {
     const upstream = await fetch(streamUrl, { signal: controller.signal, redirect: 'error', headers: { Accept: 'video/mp2t, */*', 'Accept-Encoding': 'identity' } });
     if (!upstream.ok || !upstream.body) throw new VBoxError(`El sintonizador no ha podido abrir este canal (HTTP ${upstream.status}).`);
-    if (vboxTranscodeAudio) return proxyVBoxWithAac(response, upstream.body, controller);
+    if (vboxTranscodeAudio || transcodeVideo) return proxyVBoxWithAac(response, upstream.body, controller, transcodeVideo);
     response.writeHead(200, { 'Content-Type': 'video/mp2t', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
     const stream = Readable.fromWeb(upstream.body);
     stream.on('error', () => { if (!response.destroyed) response.destroy(); });
@@ -92,16 +92,26 @@ async function proxyVBox(request, response, channelId) {
 
 // La TDT española puede emitir audio MP2, que VLC entiende pero que los
 // navegadores no admiten normalmente dentro de MP4/MSE. FFmpeg copia el vídeo
-// H.264 original y convierte solo la primera pista de audio a AAC. La entrada
+// H.264 original y convierte solo la primera pista de audio a AAC. Si Firefox
+// falla en VideoToolbox/MSE, el cliente puede solicitar vídeo H.264 progresivo
+// mediante ?video=progressive. Esta segunda vía sí recodifica y consume CPU.
+// La entrada
 // procede del fetch ya validado: FFmpeg no puede seguir redirecciones a otros
 // servidores ni abrir URLs arbitrarias incluidas en una lista M3U.
-function proxyVBoxWithAac(response, body, controller) {
+function proxyVBoxWithAac(response, body, controller, transcodeVideo = false) {
+  const videoArgs = transcodeVideo ? [
+    '-vf', 'yadif=mode=send_frame:parity=auto:deint=interlaced,scale=1280:720:force_original_aspect_ratio=decrease:flags=fast_bilinear,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1',
+    '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency',
+    '-pix_fmt', 'yuv420p', '-profile:v', 'baseline',
+    '-crf', '23', '-maxrate', '3500k', '-bufsize', '7000k',
+    '-g', '50', '-keyint_min', '50', '-sc_threshold', '0'
+  ] : ['-c:v', 'copy'];
   const ffmpeg = spawn('ffmpeg', [
     '-nostdin', '-hide_banner', '-loglevel', 'error',
     '-probesize', '5000000', '-analyzeduration', '5000000',
     '-f', 'mpegts', '-i', 'pipe:0',
     '-map', '0:v:0?', '-map', '0:a:0?',
-    '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-ac', '2',
+    ...videoArgs, '-c:a', 'aac', '-b:a', '128k', '-ac', '2',
     '-sn', '-dn', '-f', 'mpegts', '-muxdelay', '0', 'pipe:1'
   ], { stdio: ['pipe', 'pipe', 'pipe'] });
   const input = Readable.fromWeb(body);
@@ -113,7 +123,7 @@ function proxyVBoxWithAac(response, body, controller) {
     if (failed || response.destroyed || controller.signal.aborted) return;
     failed = true;
     if (lastError) console.error('VBox FFmpeg:', lastError.slice(-500));
-    if (!response.headersSent) reply(response, 502, { error: 'No se ha podido convertir el audio de la señal TDT.' });
+    if (!response.headersSent) reply(response, 502, { error: 'No se ha podido preparar la señal TDT compatible con este navegador.' });
     else response.destroy();
     controller.abort();
   };
