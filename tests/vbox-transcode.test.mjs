@@ -57,6 +57,7 @@ test('convierte audio DVB MP2 a AAC y conserva H.264 mediante el proxy', { skip:
     }
     assert.ok(stream);
     assert.equal(stream.status, 200);
+    assert.equal(stream.headers.get('x-opentv-video-encoder'), 'copy');
     const output = Buffer.from(await stream.arrayBuffer());
     assert.ok(output.length > 10000, `Salida MPEG-TS demasiado corta: ${output.length}`);
 
@@ -73,6 +74,7 @@ test('convierte audio DVB MP2 a AAC y conserva H.264 mediante el proxy', { skip:
     // La vía de compatibilidad debe generar un nuevo H.264 progresivo a 720p.
     const compatible = await fetch(`http://127.0.0.1:${appPort}/api/vbox/stream/telecinco?video=progressive`, { signal: AbortSignal.timeout(15_000) });
     assert.equal(compatible.status, 200);
+    assert.equal(compatible.headers.get('x-opentv-video-encoder'), 'cpu');
     const compatibleBytes = Buffer.from(await compatible.arrayBuffer());
     const compatibleProbe = spawnSync('ffprobe', [
       '-v', 'error', '-show_entries', 'stream=codec_type,codec_name,profile,width,height,field_order',
@@ -86,6 +88,46 @@ test('convierte audio DVB MP2 a AAC y conserva H.264 mediante el proxy', { skip:
     assert.equal(video.height, 720);
     assert.equal(video.field_order, 'progressive');
     assert.ok(compatibleCodecs.some(stream => stream.codec_type === 'audio' && stream.codec_name === 'aac'));
+
+    // Una GPU no disponible no debe impedir que Firefox reciba vídeo compatible:
+    // el servidor vuelve a abrir la señal del VBox y reintenta con libx264.
+    const gpuPortServer = createServer();
+    const gpuPort = await listening(gpuPortServer);
+    await new Promise(resolve => gpuPortServer.close(resolve));
+    const gpuApp = spawn(process.execPath, ['server.mjs'], {
+      cwd: directory,
+      env: {
+        ...process.env, HOST: '127.0.0.1', PORT: String(gpuPort),
+        OPENTV_CATALOG_URL: `http://127.0.0.1:${upstreamPort}/catalog.json`,
+        OPENTV_VBOX_PLAYLIST_URL: `http://127.0.0.1:${upstreamPort}/vboxSimpleIptv.m3u8`,
+        OPENTV_VBOX_VIDEO_ENCODER: 'vaapi',
+        OPENTV_VBOX_VAAPI_DEVICE: '/dev/dri/no-such-device'
+      },
+      stdio: 'ignore'
+    });
+    try {
+      let fallback;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        try {
+          fallback = await fetch(`http://127.0.0.1:${gpuPort}/api/vbox/stream/telecinco?video=progressive`, { signal: AbortSignal.timeout(15_000) });
+          break;
+        } catch { await delay(70); }
+      }
+      assert.ok(fallback);
+      assert.equal(fallback.status, 200);
+      assert.equal(fallback.headers.get('x-opentv-video-encoder'), 'cpu');
+      const fallbackBytes = Buffer.from(await fallback.arrayBuffer());
+      const fallbackProbe = spawnSync('ffprobe', [
+        '-v', 'error', '-show_entries', 'stream=codec_type,codec_name,profile,width,height,field_order',
+        '-of', 'json', '-i', 'pipe:0'
+      ], { input: fallbackBytes, maxBuffer: 2 * 1024 * 1024 });
+      assert.equal(fallbackProbe.status, 0, fallbackProbe.stderr.toString());
+      const fallbackStreams = JSON.parse(fallbackProbe.stdout).streams;
+      assert.equal(fallbackStreams.find(stream => stream.codec_type === 'video')?.field_order, 'progressive');
+      assert.ok(fallbackStreams.some(stream => stream.codec_type === 'audio' && stream.codec_name === 'aac'));
+    } finally {
+      gpuApp.kill('SIGTERM');
+    }
   } finally {
     app.kill('SIGTERM');
     await new Promise(resolve => upstream.close(resolve));

@@ -1,6 +1,8 @@
 FROM node:22-alpine
 
-RUN apk add --no-cache ffmpeg
+# La aceleración Intel solo existe en imágenes x86_64; conservar builds ARM64.
+RUN apk add --no-cache ffmpeg && \
+    if [ "$(apk --print-arch)" = 'x86_64' ]; then apk add --no-cache intel-media-driver; fi
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \

@@ -1,0 +1,12 @@
+# Overlay opcional para Intel Quick Sync (VA-API). No habilitar en hosts sin /dev/dri.
+services:
+  opentv:
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    group_add:
+      - "${OPENTV_RENDER_GID:?Define OPENTV_RENDER_GID con stat -c %g /dev/dri/renderD128}"
+    environment:
+      LIBVA_DRIVER_NAME: iHD
+      XDG_CACHE_HOME: /tmp
+      OPENTV_VBOX_VIDEO_ENCODER: vaapi
+      OPENTV_VBOX_VAAPI_DEVICE: /dev/dri/renderD128

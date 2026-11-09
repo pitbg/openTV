@@ -78,7 +78,37 @@ Los canales de la lista local se incorporan al catálogo y se priorizan automát
 
 **Audio de la TDT:** Telecinco HD puede emitir H.264 Main con audio MP2. Este último no funciona de forma generalizada con MP4/MSE, por lo que openTV convierte **solo el audio** a AAC (128 kb/s), copiando el vídeo sin pérdida de calidad ni recodificación. Cada espectador que ve una señal local activa un proceso FFmpeg mientras la reproduce; al cerrar el vídeo se termina ese proceso. Si un canal ya utiliza audio compatible y quieres evitar la conversión, puedes definir `OPENTV_VBOX_TRANSCODE_AUDIO=false` en el `.env` (el valor predeterminado es `true`) y reconstruir la instancia. Esto devuelve el MPEG-TS original sin modificar.
 
-**Compatibilidad especial para Firefox en macOS:** en algunos flujos H.264 el decodificador AppleVTDecoder de Firefox puede fallar aunque Safari los reproduzca (error `ffffdcf7`; véase [Mozilla 1709081](https://bugzilla.mozilla.org/show_bug.cgi?id=1709081)). Si Firefox informa `MediaMSEError` con la señal local original, openTV **reintenta una vez** con `/api/vbox/stream/<canal>?video=progressive`: FFmpeg reconstruye el vídeo como H.264 Baseline progresivo a 720p y mantiene AAC. Esta alternativa usa **bastante más CPU** que copiar el vídeo y puede introducir más latencia; Safari y los navegadores que admitan la señal original no la utilizan. Si la alternativa tampoco funciona, se mostrará el error sin entrar en un bucle de reintentos. Esta conversión está verificada con una señal sintética, pendiente de probar con el VBox real.
+**Compatibilidad especial para Firefox en macOS:** en algunos flujos H.264 el decodificador AppleVTDecoder de Firefox puede fallar aunque Safari los reproduzca (error `ffffdcf7`; véase [Mozilla 1709081](https://bugzilla.mozilla.org/show_bug.cgi?id=1709081)). Si Firefox informa `MediaMSEError` con la señal local original, openTV **reintenta una vez** con `/api/vbox/stream/<canal>?video=progressive`: FFmpeg reconstruye el vídeo como H.264 Baseline progresivo a 720p y mantiene AAC. Esta alternativa utiliza más recursos y puede introducir latencia; Safari y los navegadores que admitan la señal original no la utilizan. Probado en el VBox real con Firefox y Safari.
+
+### Aceleración Intel Quick Sync (VA-API, opcional)
+
+En Linux, algunas GPU Intel pueden codificar H.264 sin sobrecargar tanto la CPU. Por ejemplo, la **Intel UHD Graphics 630 (Coffee Lake)** expone H.264 mediante `VAEntrypointEncSliceLP`, el modo de bajo consumo: FFmpeg debe usar `h264_vaapi -low_power 1`. openTV mantiene por defecto `libx264`, que ya funciona; **solo el vídeo de compatibilidad (`?video=progressive`)** usa GPU cuando activas el overlay. Los canales que Safari reproduce directamente siguen copiando el vídeo original.
+
+1. Comprueba desde el host que funciona `vainfo --display drm --device /dev/dri/renderD128` (la GPU debe ofrecer `VAProfileH264ConstrainedBaseline: VAEntrypointEncSliceLP`). Si indica permisos insuficientes, tu usuario debe pertenecer al grupo `render`: `sudo usermod -aG render "$USER"` y nueva sesión SSH. Para el contenedor se pasa además el GID numérico de ese dispositivo.
+2. Desde la carpeta de openTV, configura el GID y levanta **la instancia de pruebas** con el overlay GPU:
+
+   ```bash
+   export OPENTV_RENDER_GID="$(stat -c '%g' /dev/dri/renderD128)"
+   docker compose -p opentv-vbox-test -f compose.yml -f compose.gpu.yml up -d --build --force-recreate
+   ```
+
+3. Abre Telecinco HD en Firefox. Si el H.264 original falla, se solicita la señal progresiva y FFmpeg intenta `h264_vaapi`. Si el controlador o la GPU fallan **antes de empezar a enviar vídeo**, openTV registra el error, vuelve a conectar con el VBox y utiliza `libx264` automáticamente. Un fallo después de comenzar la emisión todavía puede interrumpir esa sesión. Para comprobarlo:
+
+   ```bash
+   docker compose -p opentv-vbox-test -f compose.yml -f compose.gpu.yml logs -f opentv
+   ```
+
+   También puedes comprobar el codificador real en la cabecera de la petición `?video=progressive` (DevTools → Red → respuesta → `X-OpenTV-Video-Encoder`): `vaapi` significa que la GPU está codificando; `cpu` indica que se ha utilizado el respaldo por software.
+
+La imagen Docker incluye `intel-media-driver` para que pueda cargar `iHD`; el overlay expone exclusivamente `/dev/dri/renderD128` y añade el GID `render` al usuario no privilegiado del contenedor. No expone la GPU en el despliegue normal. Si tienes otro dispositivo DRM, ajusta `compose.gpu.yml` y `OPENTV_VBOX_VAAPI_DEVICE`.
+
+**Para volver a usar únicamente CPU**, quita el overlay al recrear el contenedor de pruebas:
+
+```bash
+docker compose -p opentv-vbox-test -f compose.yml up -d --force-recreate
+```
+
+No apliques el overlay al contenedor de producción hasta verificar la reproducción con el hardware real. Recodificar por GPU puede cambiar ligeramente la calidad y el bitrate respecto a `libx264`.
 
 **Seguridad:** los canales TDT pasan por openTV y consumen ancho de banda del VBox y de tu servidor. Mantén openTV detrás de una red privada, acceso autenticado o Tailscale. Evita exponer el puerto `3080` directamente a Internet. No abras el puerto `55555` del VBox al exterior.
 
@@ -121,6 +151,8 @@ Si NPM y openTV comparten una red de Docker, puedes evitar publicar el puerto a 
 | `OPENTV_CATALOG_TTL_MS` | `21600000` | Tiempo de actualización del catálogo, en milisegundos (configurable en `compose.yml`) |
 | `OPENTV_VBOX_PLAYLIST_URL` | vacío | Lista IPTV del VBox; si está vacía, la integración TDT está desactivada |
 | `OPENTV_VBOX_TRANSCODE_AUDIO` | `true` | Convierte audio de VBox a AAC usando FFmpeg; `false` retransmite el MPEG-TS original |
+| `OPENTV_VBOX_VIDEO_ENCODER` | `cpu` | `cpu` utiliza libx264; `vaapi` prefiere codificación Intel por hardware para el vídeo progresivo |
+| `OPENTV_VBOX_VAAPI_DEVICE` | `/dev/dri/renderD128` | Dispositivo DRM para FFmpeg, debe estar expuesto al contenedor |
 
 Para pruebas locales se puede indicar `OPENTV_CATALOG_URL` con un catálogo JSON compatible. No es necesario definirla en producción.
 

@@ -8,6 +8,7 @@ import { createCatalogService } from './lib/catalog.mjs';
 import { AtresplayerError, resolveAtresplayerHls } from './lib/atresplayer.mjs';
 import { MediasetError, resolveMediasetHls } from './lib/mediaset.mjs';
 import { createVBoxService, mergeVBoxChannels, VBoxError } from './lib/vbox.mjs';
+import { vboxFfmpegArgs } from './lib/ffmpeg-args.mjs';
 
 const root = resolve(fileURLToPath(new URL('./public/', import.meta.url)));
 const vendor = resolve(fileURLToPath(new URL('./node_modules/hls.js/dist/hls.min.js', import.meta.url)));
@@ -18,6 +19,8 @@ const ttl = Number(process.env.OPENTV_CATALOG_TTL_MS) || 21_600_000;
 const catalog = createCatalogService({ ttlMs: ttl, ...(process.env.OPENTV_CATALOG_URL ? { sourceUrl: process.env.OPENTV_CATALOG_URL } : {}) });
 const vbox = createVBoxService({ playlistUrl: process.env.OPENTV_VBOX_PLAYLIST_URL });
 const vboxTranscodeAudio = process.env.OPENTV_VBOX_TRANSCODE_AUDIO !== 'false' && process.env.OPENTV_VBOX_TRANSCODE_AUDIO !== '0';
+const vboxVideoEncoder = process.env.OPENTV_VBOX_VIDEO_ENCODER === 'vaapi' ? 'vaapi' : 'cpu';
+const vboxVaapiDevice = process.env.OPENTV_VBOX_VAAPI_DEVICE || '/dev/dri/renderD128';
 const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 
 const server = createServer(async (request, response) => {
@@ -78,7 +81,10 @@ async function proxyVBox(request, response, channelId, transcodeVideo = false) {
   try {
     const upstream = await fetch(streamUrl, { signal: controller.signal, redirect: 'error', headers: { Accept: 'video/mp2t, */*', 'Accept-Encoding': 'identity' } });
     if (!upstream.ok || !upstream.body) throw new VBoxError(`El sintonizador no ha podido abrir este canal (HTTP ${upstream.status}).`);
-    if (vboxTranscodeAudio || transcodeVideo) return proxyVBoxWithAac(response, upstream.body, controller, transcodeVideo);
+    if (vboxTranscodeAudio || transcodeVideo) {
+      await proxyVBoxWithAac(response, streamUrl, upstream.body, controller, transcodeVideo);
+      return;
+    }
     response.writeHead(200, { 'Content-Type': 'video/mp2t', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
     const stream = Readable.fromWeb(upstream.body);
     stream.on('error', () => { if (!response.destroyed) response.destroy(); });
@@ -94,59 +100,79 @@ async function proxyVBox(request, response, channelId, transcodeVideo = false) {
 // navegadores no admiten normalmente dentro de MP4/MSE. FFmpeg copia el vídeo
 // H.264 original y convierte solo la primera pista de audio a AAC. Si Firefox
 // falla en VideoToolbox/MSE, el cliente puede solicitar vídeo H.264 progresivo
-// mediante ?video=progressive. Esta segunda vía sí recodifica y consume CPU.
-// La entrada
+// mediante ?video=progressive. Se intenta VA-API únicamente si se habilita en
+// el servidor. Ante un fallo al iniciar la GPU se reabre la señal y se utiliza
+// libx264, sin modificar la vía original que funciona en Safari. La entrada
 // procede del fetch ya validado: FFmpeg no puede seguir redirecciones a otros
 // servidores ni abrir URLs arbitrarias incluidas en una lista M3U.
-function proxyVBoxWithAac(response, body, controller, transcodeVideo = false) {
-  const videoArgs = transcodeVideo ? [
-    '-vf', 'yadif=mode=send_frame:parity=auto:deint=interlaced,scale=1280:720:force_original_aspect_ratio=decrease:flags=fast_bilinear,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1',
-    '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency',
-    '-pix_fmt', 'yuv420p', '-profile:v', 'baseline',
-    '-crf', '23', '-maxrate', '3500k', '-bufsize', '7000k',
-    '-g', '50', '-keyint_min', '50', '-sc_threshold', '0'
-  ] : ['-c:v', 'copy'];
-  const ffmpeg = spawn('ffmpeg', [
-    '-nostdin', '-hide_banner', '-loglevel', 'error',
-    '-probesize', '5000000', '-analyzeduration', '5000000',
-    '-f', 'mpegts', '-i', 'pipe:0',
-    '-map', '0:v:0?', '-map', '0:a:0?',
-    ...videoArgs, '-c:a', 'aac', '-b:a', '128k', '-ac', '2',
-    '-sn', '-dn', '-f', 'mpegts', '-muxdelay', '0', 'pipe:1'
-  ], { stdio: ['pipe', 'pipe', 'pipe'] });
-  const input = Readable.fromWeb(body);
-  let lastError = '';
-  let started = false;
-  let failed = false;
+async function proxyVBoxWithAac(response, streamUrl, body, controller, transcodeVideo = false) {
+  if (transcodeVideo && vboxVideoEncoder === 'vaapi') {
+    try {
+      await streamWithFfmpeg(response, body, controller, 'vaapi', transcodeVideo);
+      return;
+    } catch (error) {
+      if (controller.signal.aborted || response.headersSent) return;
+      console.warn('VBox VA-API no disponible; reintentando con CPU:', error.message.slice(-500));
+      const upstream = await fetch(streamUrl, { signal: controller.signal, redirect: 'error', headers: { Accept: 'video/mp2t, */*', 'Accept-Encoding': 'identity' } });
+      if (!upstream.ok || !upstream.body) throw new VBoxError(`El sintonizador no ha podido reabrir este canal (HTTP ${upstream.status}).`);
+      await streamWithFfmpeg(response, upstream.body, controller, 'cpu', transcodeVideo);
+      return;
+    }
+  }
+  await streamWithFfmpeg(response, body, controller, 'cpu', transcodeVideo);
+}
 
-  const fail = () => {
-    if (failed || response.destroyed || controller.signal.aborted) return;
-    failed = true;
-    if (lastError) console.error('VBox FFmpeg:', lastError.slice(-500));
-    if (!response.headersSent) reply(response, 502, { error: 'No se ha podido preparar la señal TDT compatible con este navegador.' });
-    else response.destroy();
-    controller.abort();
-  };
+function streamWithFfmpeg(response, body, controller, encoder, transcodeVideo) {
+  return new Promise((resolve, reject) => {
+    const ffmpeg = spawn('ffmpeg', vboxFfmpegArgs({ transcodeVideo, encoder, vaapiDevice: vboxVaapiDevice }), {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, ...(encoder === 'vaapi' ? { LIBVA_DRIVER_NAME: 'iHD' } : {}) }
+    });
+    const input = Readable.fromWeb(body);
+    let lastError = '';
+    let started = false;
+    let failed = false;
 
-  ffmpeg.stderr.on('data', chunk => { lastError = (lastError + chunk.toString()).slice(-1500); });
-  ffmpeg.once('error', fail);
-  ffmpeg.stdout.once('data', chunk => {
-    if (response.destroyed || controller.signal.aborted) return;
-    started = true;
-    response.writeHead(200, { 'Content-Type': 'video/mp2t', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
-    response.write(chunk);
-    ffmpeg.stdout.pipe(response);
+    const fail = () => {
+      if (failed || response.destroyed || controller.signal.aborted) return;
+      failed = true;
+      ffmpeg.kill('SIGTERM');
+      input.destroy();
+      response.off('close', stop);
+      const error = new Error(lastError || 'FFmpeg no ha producido señal de vídeo.');
+      if (!started) reject(error);
+      else { console.error('VBox FFmpeg:', error.message.slice(-500)); response.destroy(); }
+    };
+    const stop = () => {
+      ffmpeg.kill('SIGTERM');
+      input.destroy();
+      if (!started) reject(new Error('El cliente ha cerrado el stream.'));
+    };
+
+    ffmpeg.stderr.on('data', chunk => { lastError = (lastError + chunk.toString()).slice(-1500); });
+    ffmpeg.once('error', fail);
+    ffmpeg.stdout.once('data', chunk => {
+      if (response.destroyed || controller.signal.aborted) return;
+      started = true;
+      response.writeHead(200, {
+        'Content-Type': 'video/mp2t',
+        'Cache-Control': 'no-store',
+        'X-Accel-Buffering': 'no',
+        'X-OpenTV-Video-Encoder': transcodeVideo ? encoder : 'copy'
+      });
+      response.write(chunk);
+      ffmpeg.stdout.pipe(response);
+      resolve();
+    });
+    ffmpeg.once('close', code => {
+      if (!started || code !== 0) fail();
+      else if (!response.writableEnded && !response.destroyed) response.end();
+    });
+    response.once('close', stop);
+    input.on('error', () => { if (!controller.signal.aborted) fail(); });
+    ffmpeg.stdin.on('error', error => { if (error.code !== 'EPIPE' && !controller.signal.aborted) fail(); });
+    input.pipe(ffmpeg.stdin);
   });
-  ffmpeg.once('close', code => {
-    if (!started || code !== 0) fail();
-  });
-  response.once('close', () => {
-    ffmpeg.kill('SIGTERM');
-    input.destroy();
-  });
-  input.on('error', () => { if (!controller.signal.aborted) fail(); });
-  ffmpeg.stdin.on('error', error => { if (error.code !== 'EPIPE' && !controller.signal.aborted) fail(); });
-  input.pipe(ffmpeg.stdin);
 }
 
 function reply(response, code, body) {
