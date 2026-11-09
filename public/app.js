@@ -1,7 +1,7 @@
 const $ = selector => document.querySelector(selector);
 const elements = {
   grid: $('#channels-grid'), queue: $('#queue-items'), stage: $('#player-stage'), video: $('#video'), embed: $('#embedded-player'), embedActions: $('#embed-actions'),
-  poster: $('#poster-screen'), error: $('#player-error'), play: $('#play-main'),
+  poster: $('#poster-screen'), error: $('#player-error'), loading: $('#player-loading'), play: $('#play-main'),
   current: $('#current-title'), subtitle: $('#current-subtitle'), posterTitle: $('#poster-channel'),
   currentLogo: $('#now-logo'), favorite: $('#favorite-current'), official: $('#official-link'),
   search: $('#search-input'), status: $('#catalog-status'), empty: $('#empty-state')
@@ -53,7 +53,7 @@ function updateNowPlaying(channel) {
   elements.current.textContent = channel.name;
   elements.subtitle.textContent = `${channel.broadcaster} · ${channel.region}`;
   elements.posterTitle.textContent = channel.name.toUpperCase();
-  $('#poster-subtitle').textContent = channel.streams.length || channel.embedUrl ? `${channel.broadcaster} · Emisión online oficial` : 'Disponible a través de la web oficial';
+  $('#poster-subtitle').textContent = channel.streams.length || channel.embedUrl || channel.dynamicStream ? `${channel.broadcaster} · Emisión online oficial` : 'Disponible a través de la web oficial';
   const newLogo = logoContent(channel, 'now-logo');
   elements.currentLogo.replaceWith(newLogo);
   elements.currentLogo = newLogo;
@@ -66,8 +66,9 @@ function updateNowPlaying(channel) {
     if (channel.website) link.href = channel.website;
     else link.removeAttribute('href');
   }
-  $('#quality-tag').textContent = channel.streams.length || channel.embedUrl ? 'EN VIVO' : 'SOLO WEB';
-  $('#retry-button').hidden = !channel.streams.length && !channel.embedUrl;
+  $('#quality-tag').textContent = channel.streams.length || channel.embedUrl || channel.dynamicStream ? 'EN VIVO' : 'SOLO WEB';
+  $('#retry-button').hidden = !channel.streams.length && !channel.embedUrl && !channel.dynamicStream;
+  $('#error-embed-button').hidden = !channel.dynamicStream || !channel.embedUrl;
 }
 
 function stopPlayback() {
@@ -79,6 +80,7 @@ function stopPlayback() {
   elements.embed.removeAttribute('src');
   elements.embed.hidden = true;
   elements.embedActions.hidden = true;
+  elements.loading.hidden = true;
   elements.stage.classList.remove('is-playing', 'is-embedded');
   elements.error.hidden = true;
   elements.poster.hidden = false;
@@ -87,11 +89,9 @@ function stopPlayback() {
 }
 
 function showPlaybackError(title, description) {
+  stopPlayback();
   elements.error.hidden = false;
   elements.poster.hidden = true;
-  elements.stage.classList.remove('is-playing', 'is-embedded');
-  elements.embed.hidden = true;
-  elements.embedActions.hidden = true;
   $('#error-title').textContent = title;
   $('#error-description').textContent = description;
 }
@@ -108,7 +108,7 @@ function playEmbedded(useAlternative = false) {
   elements.embedActions.hidden = false;
   $('#try-embed-button').hidden = !channel.alternativeEmbedUrl;
   $('#try-embed-button').textContent = useAlternative ? 'Probar reproductor nuevo' : 'Probar otro reproductor';
-  $('#try-hls-button').hidden = !channel.streams.length;
+  $('#try-hls-button').hidden = !channel.streams.length && !channel.dynamicStream;
   elements.poster.hidden = true;
   elements.stage.classList.add('is-embedded');
   state.started = true;
@@ -117,21 +117,43 @@ function playEmbedded(useAlternative = false) {
 function playChannel() {
   const channel = activeChannel();
   if (!channel) return;
+  if (channel.dynamicStream) return playDynamicStream(channel);
   if (channel.embedUrl && (channel.preferEmbed || !channel.streams.length)) playEmbedded();
   else playStream(0);
+}
+
+async function playDynamicStream(channel) {
+  stopPlayback();
+  const attempt = state.playbackAttempt;
+  elements.poster.hidden = true;
+  elements.loading.hidden = false;
+  try {
+    const response = await fetch(`/api/streams/${encodeURIComponent(channel.id)}`, { cache: 'no-store' });
+    const body = await response.json();
+    if (attempt !== state.playbackAttempt || activeChannel()?.id !== channel.id) return;
+    if (!response.ok || !Array.isArray(body.streams) || !body.streams.length) {
+      throw new Error(body.error || 'No se encontró una señal HLS compatible.');
+    }
+    channel.streams = body.streams;
+    elements.loading.hidden = true;
+    playStream(0);
+  } catch (error) {
+    if (attempt !== state.playbackAttempt || activeChannel()?.id !== channel.id) return;
+    showPlaybackError('No se ha podido abrir Antena 3', `${error.message} Puedes verlo en la web oficial de Atresplayer.`);
+  }
 }
 
 async function playStream(index = state.sourceIndex) {
   const channel = activeChannel();
   if (!channel) return;
   if (!channel.streams.length) {
-    if (channel.embedUrl) return playEmbedded();
+    if (channel.embedUrl && !channel.dynamicStream) return playEmbedded();
     showPlaybackError('Sin señal directa disponible', 'Esta cadena solo ofrece su emisión en su propia web. Puedes abrirla con el botón inferior.');
     return;
   }
   if (index >= channel.streams.length) {
-    if (channel.embedUrl) return playEmbedded();
-    showPlaybackError('No podemos reproducir este canal aquí', 'La cadena puede limitar el acceso por ubicación, formato o permisos del navegador. Prueba la web oficial.');
+    if (channel.embedUrl && !channel.dynamicStream) return playEmbedded();
+    showPlaybackError('No podemos reproducir este canal aquí', 'No ha funcionado ninguna fuente HLS. La cadena puede limitar su acceso o impedir la reproducción fuera de su web oficial.');
     return;
   }
   state.sourceIndex = index;
@@ -182,8 +204,9 @@ elements.video.addEventListener('error', () => {
 });
 elements.play.addEventListener('click', playChannel);
 $('#retry-button').addEventListener('click', playChannel);
-$('#try-hls-button').addEventListener('click', () => playStream(0));
+$('#try-hls-button').addEventListener('click', () => activeChannel()?.dynamicStream ? playChannel() : playStream(0));
 $('#try-embed-button').addEventListener('click', () => playEmbedded(!state.embedAlternative));
+$('#error-embed-button').addEventListener('click', () => playEmbedded());
 $('#fullscreen-button').addEventListener('click', () => {
   if (document.fullscreenElement) document.exitFullscreen();
   else if (elements.stage.requestFullscreen) elements.stage.requestFullscreen();
@@ -222,7 +245,7 @@ function makeCard(channel) {
   const region = document.createElement('div'); region.className = 'card-region'; region.textContent = channel.region;
   const foot = document.createElement('div'); foot.className = 'card-foot';
   const signal = document.createElement('span'); signal.className = channel.streams.length || channel.embedUrl ? '' : 'not-embedded';
-  signal.textContent = channel.embedUrl ? '● PLAYER OFICIAL' : channel.streams.length ? '● SEÑAL ONLINE' : '↗ WEB OFICIAL';
+  signal.textContent = channel.dynamicStream ? '● HLS DINÁMICO' : channel.embedUrl ? '● PLAYER OFICIAL' : channel.streams.length ? '● SEÑAL ONLINE' : '↗ WEB OFICIAL';
   const arrow = document.createElement('span'); arrow.textContent = '↗';
   foot.append(signal, arrow); card.append(header, name, region, foot);
   return card;

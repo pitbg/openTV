@@ -4,17 +4,17 @@
 
 ![Node.js](https://img.shields.io/badge/Node.js-22-67b947) ![Docker](https://img.shields.io/badge/Docker-Compose-2496ed) ![HLS](https://img.shields.io/badge/Video-HLS-eab676)
 
-## Qué incluye la v0.2.1
+## Qué incluye la v0.3.0
 
 - Canales públicos nacionales (RTVE) y autonómicos (Telemadrid, Canal Sur, TV3, ETB, TVG, À Punt, Aragón TV y más) cuando figuran en el catálogo, además de una selección de cadenas privadas nacionales.
-- **Antena 3:** dos variantes del reproductor oficial incrustado de Atresplayer, seleccionables desde el propio vídeo, y enlace al directo en su web. La plataforma puede mostrar «Actualmente sin emisión» o exigir una cuenta/plan según sus condiciones: openTV no puede garantizar su reproducción. **Telecinco:** acceso a la emisión de Mediaset Infinity, que no ofrece un HLS público en el catálogo utilizado.
+- **Antena 3:** busca una URL HLS vigente cuando pulsas reproducir, consultando la API pública utilizada por [Streamlink](https://github.com/streamlink/streamlink/blob/master/src/streamlink/plugins/atresplayer.py). Si falla, puedes probar manualmente los dos reproductores oficiales incrustados o ir a su web. **Es una integración experimental**: el proveedor puede requerir sesión, limitar su API, denegar CORS o no publicar una fuente HLS en tu región; no podemos garantizar que funcione. **Telecinco:** acceso a la emisión de Mediaset Infinity, que no ofrece un HLS público en el catálogo utilizado.
 - **La 1:** utiliza de forma preferente el reproductor incrustado oficial de RTVE; permite probar su enlace HLS como alternativa.
 - Reproducción HLS nativa (Safari) o con [HLS.js](https://github.com/video-dev/hls.js/) (Chrome/Firefox/Edge).
 - Búsqueda, filtros por ámbito o comunidad autónoma, favoritos y último canal visto (guardados en el propio navegador).
 - Pantalla completa, cambio rápido entre canales y navegación con flechas izquierda/derecha.
 - Enlace a la emisión oficial si no existe señal HLS compatible o el navegador bloquea la reproducción.
 - Catálogo de [TDTChannels](https://www.tdtchannels.com/listas/) actualizado cada 6 horas, con caché en memoria y último resultado correcto si la fuente falla temporalmente.
-- Interfaz adaptada a móvil y escritorio, y API `/api/channels` + `/api/health`.
+- Interfaz adaptada a móvil y escritorio, API `/api/channels` + `/api/health` y resolución HLS bajo demanda con `/api/streams/antena-3`.
 
 **Importante:** algunos canales están geobloqueados, usan DRM, requieren permisos CORS especiales, exigen iniciar sesión en sus plataformas o cambian sus URLs. openTV **no** elude estas restricciones. La disponibilidad dentro del reproductor depende de cada emisora, incluso con los reproductores incrustados; en esos casos utiliza el enlace a su sitio web oficial. Las emisiones se descargan directamente del emisor al navegador: el contenedor no actúa como proxy de vídeo.
 
@@ -76,12 +76,13 @@ npm test
 ## Cómo funciona
 
 1. El backend consulta el JSON publicado por TDTChannels y escoge los canales incluidos en `lib/catalog.mjs`. Las excepciones editoriales (como Antena 3, que no figura en ese JSON) tienen su ficha y URL oficial incorporadas explícitamente.
-2. La API devuelve nombre, comunidad, logo, web oficial, reproductor incrustado oficial si existe y varias URLs HLS cuando están publicadas.
-3. El navegador reproduce el HLS o carga el reproductor oficial y prueba alternativas si una señal HLS falla; no se almacenan ni redistribuyen los segmentos de vídeo.
+2. La API devuelve nombre, comunidad, logo, web oficial, reproductor incrustado oficial si existe y varias URLs HLS cuando están publicadas. Para Antena 3, `/api/streams/antena-3` consulta tres rutas de la API oficial y devuelve las URLs HLS disponibles en ese momento, si las hay.
+3. El navegador reproduce el HLS o carga el reproductor oficial y prueba alternativas si una señal HLS falla; no se almacenan ni redistribuyen los segmentos de vídeo. No se accede a contenido con DRM, se simulan sesiones de usuario ni se evitan restricciones geográficas.
 4. Tus favoritos se guardan en `localStorage`. No hay base de datos ni seguimiento de usuarios.
 
 ### Limitaciones y próximas mejoras
 
+- **Para diagnosticar Antena 3:** abre `http://IP:3080/api/streams/antena-3` en tu servidor. Si muestra `streams`, la resolución ha funcionado y cualquier error posterior suele estar en el acceso del navegador al HLS (CORS, origen o caducidad). Si muestra `error`, la respuesta describe el paso bloqueado. **Las URLs devueltas pueden incluir credenciales efímeras: no las compartas públicamente.**
 - Añadir guía de programación EPG (ahora/siguiente) cuando se valide su formato y sincronización.
 - Mejorar el control con mando en Android TV y añadir PWA instalable.
 - Monitorizar de forma no intrusiva las fuentes y permitir configurar emisoras locales adicionales.

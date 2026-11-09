@@ -34,6 +34,8 @@ test('selecciona canales oficiales, incluida TV privada sin HLS, y descarta fuen
   assert.equal(parsed[1].streams.length, 0);
   assert.match(parsed[2].embedUrl, /embed\/live\/antena3\//);
   assert.match(parsed[2].alternativeEmbedUrl, /embebido-directos\/antena3/);
+  assert.equal(parsed[2].dynamicStream, true);
+  assert.equal(parsed[2].preferEmbed, false);
   assert.equal(parsed[2].streams.length, 0);
   assert.equal(parsed[3].streams.length, 0);
   assert.equal(parsed[3].website, 'https://www.mediasetinfinity.es/directo/telecinco/');

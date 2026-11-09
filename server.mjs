@@ -3,6 +3,7 @@ import { createReadStream, statSync } from 'node:fs';
 import { resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createCatalogService } from './lib/catalog.mjs';
+import { AtresplayerError, resolveAtresplayerHls } from './lib/atresplayer.mjs';
 
 const root = resolve(fileURLToPath(new URL('./public/', import.meta.url)));
 const vendor = resolve(fileURLToPath(new URL('./node_modules/hls.js/dist/hls.min.js', import.meta.url)));
@@ -27,6 +28,15 @@ const server = createServer(async (request, response) => {
     if (pathname === '/api/health') return reply(response, 200, { status: 'ok', count: state.channels.length, catalogAvailable: state.channels.length > 0, stale: state.stale });
     response.setHeader('Cache-Control', 'no-store');
     return reply(response, state.channels.length ? 200 : 503, state);
+  }
+
+  if (pathname === '/api/streams/antena-3') {
+    response.setHeader('Cache-Control', 'no-store');
+    try { return reply(response, 200, await resolveAtresplayerHls('antena-3')); }
+    catch (error) {
+      if (!(error instanceof AtresplayerError)) console.error('Error al consultar Atresplayer:', error?.message);
+      return reply(response, 502, { error: error instanceof AtresplayerError ? error.message : 'No se pudo consultar la señal de Antena 3.' });
+    }
   }
 
   let file;
