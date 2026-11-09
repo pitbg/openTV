@@ -8,7 +8,7 @@ const elements = {
 };
 
 const safeStored = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
-const state = { channels: [], activeId: safeStored('opentv-last-channel', null), favorites: new Set(safeStored('opentv-favorites', [])), filter: 'all', query: '', region: null, sourceIndex: 0, hls: null, playbackAttempt: 0, started: false };
+const state = { channels: [], activeId: safeStored('opentv-last-channel', null), favorites: new Set(safeStored('opentv-favorites', [])), filter: 'all', query: '', region: null, sourceIndex: 0, hls: null, playbackAttempt: 0, started: false, embedAlternative: false };
 const activeChannel = () => state.channels.find(channel => channel.id === state.activeId);
 
 function remember(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Almacenamiento bloqueado */ } }
@@ -83,6 +83,7 @@ function stopPlayback() {
   elements.error.hidden = true;
   elements.poster.hidden = false;
   state.started = false;
+  state.embedAlternative = false;
 }
 
 function showPlaybackError(title, description) {
@@ -95,14 +96,18 @@ function showPlaybackError(title, description) {
   $('#error-description').textContent = description;
 }
 
-function playEmbedded() {
+function playEmbedded(useAlternative = false) {
   const channel = activeChannel();
   if (!channel?.embedUrl) return;
+  const embedUrl = useAlternative && channel.alternativeEmbedUrl ? channel.alternativeEmbedUrl : channel.embedUrl;
   stopPlayback();
+  state.embedAlternative = useAlternative;
   elements.embed.title = `Emisión oficial de ${channel.name}`;
-  elements.embed.src = channel.embedUrl;
+  elements.embed.src = embedUrl;
   elements.embed.hidden = false;
   elements.embedActions.hidden = false;
+  $('#try-embed-button').hidden = !channel.alternativeEmbedUrl;
+  $('#try-embed-button').textContent = useAlternative ? 'Probar reproductor nuevo' : 'Probar otro reproductor';
   $('#try-hls-button').hidden = !channel.streams.length;
   elements.poster.hidden = true;
   elements.stage.classList.add('is-embedded');
@@ -178,6 +183,7 @@ elements.video.addEventListener('error', () => {
 elements.play.addEventListener('click', playChannel);
 $('#retry-button').addEventListener('click', playChannel);
 $('#try-hls-button').addEventListener('click', () => playStream(0));
+$('#try-embed-button').addEventListener('click', () => playEmbedded(!state.embedAlternative));
 $('#fullscreen-button').addEventListener('click', () => {
   if (document.fullscreenElement) document.exitFullscreen();
   else if (elements.stage.requestFullscreen) elements.stage.requestFullscreen();

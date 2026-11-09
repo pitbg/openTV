@@ -4,10 +4,10 @@
 
 ![Node.js](https://img.shields.io/badge/Node.js-22-67b947) ![Docker](https://img.shields.io/badge/Docker-Compose-2496ed) ![HLS](https://img.shields.io/badge/Video-HLS-eab676)
 
-## Qué incluye la v0.2
+## Qué incluye la v0.2.1
 
 - Canales públicos nacionales (RTVE) y autonómicos (Telemadrid, Canal Sur, TV3, ETB, TVG, À Punt, Aragón TV y más) cuando figuran en el catálogo, además de una selección de cadenas privadas nacionales.
-- **Antena 3:** reproductor oficial incrustado de Atresplayer, con enlace al directo. **Telecinco:** acceso a la emisión de Mediaset Infinity, que no ofrece un HLS público en el catálogo utilizado.
+- **Antena 3:** dos variantes del reproductor oficial incrustado de Atresplayer, seleccionables desde el propio vídeo, y enlace al directo en su web. La plataforma puede mostrar «Actualmente sin emisión» o exigir una cuenta/plan según sus condiciones: openTV no puede garantizar su reproducción. **Telecinco:** acceso a la emisión de Mediaset Infinity, que no ofrece un HLS público en el catálogo utilizado.
 - **La 1:** utiliza de forma preferente el reproductor incrustado oficial de RTVE; permite probar su enlace HLS como alternativa.
 - Reproducción HLS nativa (Safari) o con [HLS.js](https://github.com/video-dev/hls.js/) (Chrome/Firefox/Edge).
 - Búsqueda, filtros por ámbito o comunidad autónoma, favoritos y último canal visto (guardados en el propio navegador).
