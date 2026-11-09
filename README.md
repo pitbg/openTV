@@ -9,7 +9,7 @@
 - Canales públicos nacionales (RTVE) y autonómicos (Telemadrid, Canal Sur, TV3, ETB, TVG, À Punt, Aragón TV y más) cuando figuran en el catálogo, además de una selección de cadenas privadas nacionales.
 - **Antena 3:** busca una URL HLS vigente cuando pulsas reproducir, consultando la API pública utilizada por [Streamlink](https://github.com/streamlink/streamlink/blob/master/src/streamlink/plugins/atresplayer.py). Funciona si la API y el CDN permiten la reproducción desde tu ubicación. Los reproductores incrustados siguen como alternativas manuales.
 - **Telecinco:** consulta bajo demanda el catálogo oficial de fuentes HLS de Mediaset (Caronte), utiliza únicamente las opciones que anuncia sin DRM ni políticas de seguridad y las intenta reproducir en el navegador. **Integración experimental:** aunque la API publique una URL HLS, el CDN puede requerir autorización, cookies o condiciones de acceso adicionales. Si no funciona, el botón de web oficial abre [telecinco.es/endirecto](https://www.telecinco.es/endirecto/). No se eluden esas restricciones.
-- **VBox TV Gateway (opcional):** importa canales de la lista IPTV de tu sintonizador TDT local (incluido Telecinco), prioriza esa señal si existe y la reproduce con [mpegts.js](https://github.com/xqq/mpegts.js). El backend de openTV transmite el MPEG-TS desde el VBox al navegador usando el mismo origen HTTPS, sin generar tokens ni recodificar el vídeo.
+- **VBox TV Gateway (opcional):** importa canales de la lista IPTV de tu sintonizador TDT local (incluido Telecinco), prioriza esa señal si existe y la reproduce con [mpegts.js](https://github.com/xqq/mpegts.js). El backend transmite la señal MPEG-TS bajo el mismo origen HTTPS; **copia el vídeo original sin recodificarlo** y convierte el audio DVB MP2 a AAC para los navegadores que no lo admiten. FFmpeg está incluido en la imagen Docker, no hay que instalarlo en el host.
 - **La 1:** utiliza de forma preferente el reproductor incrustado oficial de RTVE; permite probar su enlace HLS como alternativa.
 - Reproducción HLS nativa (Safari) o con [HLS.js](https://github.com/video-dev/hls.js/) (Chrome/Firefox/Edge), y MPEG-TS de un VBox con [mpegts.js](https://github.com/xqq/mpegts.js/).
 - Búsqueda, filtros por ámbito o comunidad autónoma, favoritos y último canal visto (guardados en el propio navegador).
@@ -22,7 +22,7 @@
 
 ## Ver la TDT de tu VBox (Telecinco incluido) 📡
 
-Si tienes un VBox TV Gateway conectado a la antena y a la misma red que el servidor Ubuntu, **no necesitas Tvheadend ni FFmpeg**. En el menú del VBox, dentro de «Streaming → IPTV», encontrarás sus listas de canales y la guía XMLTV. openTV entiende su lista `vboxSimpleIptv.m3u8` y reproduce los canales como MPEG-TS.
+Si tienes un VBox TV Gateway conectado a la antena y a la misma red que el servidor Ubuntu, **no necesitas Tvheadend ni instalar FFmpeg en Ubuntu**: la imagen Docker ya incluye FFmpeg para adaptar el audio a AAC. En el menú del VBox, dentro de «Streaming → IPTV», encontrarás sus listas de canales y la guía XMLTV. openTV entiende su lista `vboxSimpleIptv.m3u8` y reproduce los canales como MPEG-TS.
 
 1. Comprueba **desde el servidor**, no solo desde tu Mac, que puede leer la lista:
 
@@ -76,6 +76,8 @@ Los canales de la lista local se incorporan al catálogo y se priorizan automát
 
 **Compatibilidad:** MPEG-TS es un contenedor. La reproducción web depende de los códecs emitidos y del soporte MSE del navegador. Si un canal usa un códec de vídeo no admitido (por ejemplo, MPEG-2 Video), puede verse en VLC pero no en openTV; habría que añadir transcodificación para ese canal. Safari reciente, Chrome y Firefox modernos admiten las funcionalidades necesarias en plataformas compatibles.
 
+**Audio de la TDT:** Telecinco HD puede emitir H.264 Main con audio MP2. Este último no funciona de forma generalizada con MP4/MSE, por lo que openTV convierte **solo el audio** a AAC (128 kb/s), copiando el vídeo sin pérdida de calidad ni recodificación. Cada espectador que ve una señal local activa un proceso FFmpeg mientras la reproduce; al cerrar el vídeo se termina ese proceso. Si un canal ya utiliza audio compatible y quieres evitar la conversión, puedes definir `OPENTV_VBOX_TRANSCODE_AUDIO=false` en el `.env` (el valor predeterminado es `true`) y reconstruir la instancia. Esto devuelve el MPEG-TS original sin modificar.
+
 **Seguridad:** los canales TDT pasan por openTV y consumen ancho de banda del VBox y de tu servidor. Mantén openTV detrás de una red privada, acceso autenticado o Tailscale. Evita exponer el puerto `3080` directamente a Internet. No abras el puerto `55555` del VBox al exterior.
 
 La URL XMLTV del VBox (`http://192.168.1.15:55555/vboxXmltv.xml`) queda identificada para una siguiente mejora: incorporar «Ahora / Después» y la guía completa. La primera integración se centra en comprobar que el directo funciona.
@@ -116,6 +118,7 @@ Si NPM y openTV comparten una red de Docker, puedes evitar publicar el puerto a 
 | `OPENTV_CONTAINER_NAME` | `opentv` | Nombre del contenedor; permite probar otra instancia sin colisiones |
 | `OPENTV_CATALOG_TTL_MS` | `21600000` | Tiempo de actualización del catálogo, en milisegundos (configurable en `compose.yml`) |
 | `OPENTV_VBOX_PLAYLIST_URL` | vacío | Lista IPTV del VBox; si está vacía, la integración TDT está desactivada |
+| `OPENTV_VBOX_TRANSCODE_AUDIO` | `true` | Convierte audio de VBox a AAC usando FFmpeg; `false` retransmite el MPEG-TS original |
 
 Para pruebas locales se puede indicar `OPENTV_CATALOG_URL` con un catálogo JSON compatible. No es necesario definirla en producción.
 
@@ -141,7 +144,7 @@ npm test
 
 1. El backend consulta el JSON publicado por TDTChannels y escoge los canales incluidos en `lib/catalog.mjs`. Las excepciones editoriales (como Antena 3, que no figura en ese JSON) tienen su ficha y URL oficial incorporadas explícitamente.
 2. La API devuelve nombre, comunidad, logo, web oficial, reproductor incrustado oficial si existe y varias URLs HLS cuando están publicadas. Para Antena 3, `/api/streams/antena-3` consulta la API oficial; para Telecinco, `/api/streams/telecinco` consulta las fuentes de Caronte. Las URLs pueden caducar o no autorizar su reproducción externa.
-3. El navegador reproduce el HLS o carga el reproductor oficial y prueba alternativas si una señal HLS falla. Si se ha configurado un VBox, el servidor transmite por HTTP su MPEG-TS original mediante `/api/vbox/stream/<canal>` para que `mpegts.js` lo reproduzca bajo el mismo dominio. No se accede a contenido con DRM, se simulan sesiones de usuario ni se evitan restricciones geográficas.
+3. El navegador reproduce el HLS o carga el reproductor oficial y prueba alternativas si una señal HLS falla. Si se ha configurado un VBox, el servidor transmite por HTTP su señal MPEG-TS mediante `/api/vbox/stream/<canal>` para que `mpegts.js` la reproduzca bajo el mismo dominio; con la configuración habitual FFmpeg conserva el vídeo H.264 y convierte el audio a AAC. No se accede a contenido con DRM, se simulan sesiones de usuario ni se evitan restricciones geográficas.
 4. Tus favoritos se guardan en `localStorage`. No hay base de datos ni seguimiento de usuarios.
 
 ### Limitaciones y próximas mejoras

@@ -3,6 +3,7 @@ import { createReadStream, statSync } from 'node:fs';
 import { resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Readable } from 'node:stream';
+import { spawn } from 'node:child_process';
 import { createCatalogService } from './lib/catalog.mjs';
 import { AtresplayerError, resolveAtresplayerHls } from './lib/atresplayer.mjs';
 import { MediasetError, resolveMediasetHls } from './lib/mediaset.mjs';
@@ -16,6 +17,7 @@ const host = process.env.HOST || '0.0.0.0';
 const ttl = Number(process.env.OPENTV_CATALOG_TTL_MS) || 21_600_000;
 const catalog = createCatalogService({ ttlMs: ttl, ...(process.env.OPENTV_CATALOG_URL ? { sourceUrl: process.env.OPENTV_CATALOG_URL } : {}) });
 const vbox = createVBoxService({ playlistUrl: process.env.OPENTV_VBOX_PLAYLIST_URL });
+const vboxTranscodeAudio = process.env.OPENTV_VBOX_TRANSCODE_AUDIO !== 'false' && process.env.OPENTV_VBOX_TRANSCODE_AUDIO !== '0';
 const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 
 const server = createServer(async (request, response) => {
@@ -72,11 +74,12 @@ async function proxyVBox(request, response, channelId) {
     return response.end();
   }
   const controller = new AbortController();
+  response.once('close', () => controller.abort());
   try {
     const upstream = await fetch(streamUrl, { signal: controller.signal, redirect: 'error', headers: { Accept: 'video/mp2t, */*', 'Accept-Encoding': 'identity' } });
     if (!upstream.ok || !upstream.body) throw new VBoxError(`El sintonizador no ha podido abrir este canal (HTTP ${upstream.status}).`);
+    if (vboxTranscodeAudio) return proxyVBoxWithAac(response, upstream.body, controller);
     response.writeHead(200, { 'Content-Type': 'video/mp2t', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
-    response.once('close', () => controller.abort());
     const stream = Readable.fromWeb(upstream.body);
     stream.on('error', () => { if (!response.destroyed) response.destroy(); });
     stream.pipe(response);
@@ -85,6 +88,55 @@ async function proxyVBox(request, response, channelId) {
     if (response.headersSent) { if (!response.destroyed) response.destroy(); return; }
     return reply(response, 502, { error: error instanceof VBoxError ? error.message : 'No hay conexión con el streaming del VBox.' });
   }
+}
+
+// La TDT española puede emitir audio MP2, que VLC entiende pero que los
+// navegadores no admiten normalmente dentro de MP4/MSE. FFmpeg copia el vídeo
+// H.264 original y convierte solo la primera pista de audio a AAC. La entrada
+// procede del fetch ya validado: FFmpeg no puede seguir redirecciones a otros
+// servidores ni abrir URLs arbitrarias incluidas en una lista M3U.
+function proxyVBoxWithAac(response, body, controller) {
+  const ffmpeg = spawn('ffmpeg', [
+    '-nostdin', '-hide_banner', '-loglevel', 'error',
+    '-probesize', '5000000', '-analyzeduration', '5000000',
+    '-f', 'mpegts', '-i', 'pipe:0',
+    '-map', '0:v:0?', '-map', '0:a:0?',
+    '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-ac', '2',
+    '-sn', '-dn', '-f', 'mpegts', '-muxdelay', '0', 'pipe:1'
+  ], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const input = Readable.fromWeb(body);
+  let lastError = '';
+  let started = false;
+  let failed = false;
+
+  const fail = () => {
+    if (failed || response.destroyed || controller.signal.aborted) return;
+    failed = true;
+    if (lastError) console.error('VBox FFmpeg:', lastError.slice(-500));
+    if (!response.headersSent) reply(response, 502, { error: 'No se ha podido convertir el audio de la señal TDT.' });
+    else response.destroy();
+    controller.abort();
+  };
+
+  ffmpeg.stderr.on('data', chunk => { lastError = (lastError + chunk.toString()).slice(-1500); });
+  ffmpeg.once('error', fail);
+  ffmpeg.stdout.once('data', chunk => {
+    if (response.destroyed || controller.signal.aborted) return;
+    started = true;
+    response.writeHead(200, { 'Content-Type': 'video/mp2t', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
+    response.write(chunk);
+    ffmpeg.stdout.pipe(response);
+  });
+  ffmpeg.once('close', code => {
+    if (!started || code !== 0) fail();
+  });
+  response.once('close', () => {
+    ffmpeg.kill('SIGTERM');
+    input.destroy();
+  });
+  input.on('error', () => { if (!controller.signal.aborted) fail(); });
+  ffmpeg.stdin.on('error', error => { if (error.code !== 'EPIPE' && !controller.signal.aborted) fail(); });
+  input.pipe(ffmpeg.stdin);
 }
 
 function reply(response, code, body) {

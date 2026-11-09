@@ -48,7 +48,8 @@ test('la API importa el VBox y retransmite una señal sin cambiar sus bytes', { 
     env: {
       ...process.env, HOST: '127.0.0.1', PORT: String(appPort),
       OPENTV_CATALOG_URL: `http://127.0.0.1:${upstreamPort}/catalog.json`,
-      OPENTV_VBOX_PLAYLIST_URL: `http://127.0.0.1:${upstreamPort}/vboxSimpleIptv.m3u8`
+      OPENTV_VBOX_PLAYLIST_URL: `http://127.0.0.1:${upstreamPort}/vboxSimpleIptv.m3u8`,
+      OPENTV_VBOX_TRANSCODE_AUDIO: 'false'
     },
     stdio: 'ignore'
   });

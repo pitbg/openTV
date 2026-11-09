@@ -126,7 +126,7 @@ function playChannel() {
 
 function playLocalStream(channel) {
   stopPlayback();
-  if (!window.mpegts?.isSupported()) {
+  if (!window.mpegts?.getFeatureList()?.mseLivePlayback) {
     showPlaybackError('Navegador no compatible con TDT local', 'Este navegador no puede reproducir la señal MPEG-TS del VBox. Prueba Firefox, Chrome o Safari actualizado.');
     return;
   }
@@ -140,14 +140,15 @@ function playLocalStream(channel) {
       type: 'mpegts', isLive: true, url: channel.localStreamUrl
     }, { lazyLoad: false, enableStashBuffer: false, autoCleanupSourceBuffer: true });
     state.mpegts = player;
-    player.on(window.mpegts.Events.ERROR, () => {
+    player.on(window.mpegts.Events.ERROR, (type, detail, info) => {
+      console.error('Error reproduciendo TDT local:', { type, detail, info });
       if (attempt === state.playbackAttempt) {
-        showPlaybackError('No se ha podido reproducir la señal del VBox', 'Comprueba que el sintonizador está encendido y que el canal funciona en VLC. Algunos códecs no son compatibles con todos los navegadores.');
+        showPlaybackError('No se ha podido reproducir la señal del VBox', `El reproductor ha indicado: ${detail || type || 'error desconocido'}. Comprueba el registro de la consola del navegador.`);
       }
     });
     player.attachMediaElement(elements.video);
     player.load();
-    elements.video.play().catch(() => { /* El navegador puede exigir pulsar Play. */ });
+    player.play().catch(() => { /* El navegador puede exigir pulsar Play. */ });
   } catch {
     if (attempt === state.playbackAttempt) showPlaybackError('Error al iniciar la TDT', 'No se ha podido preparar la reproducción local del VBox.');
   }
