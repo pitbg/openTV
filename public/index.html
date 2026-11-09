@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0b0e17" />
+  <meta name="description" content="openTV: la televisión pública española, en directo y en un solo lugar." />
+  <title>openTV — Televisión pública en directo</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="/vendor/hls.min.js" defer></script>
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Navegación de canales">
+      <a class="brand" href="/" aria-label="openTV, inicio"><span class="brand-mark"><span></span></span><span>open<span class="brand-accent">TV</span></span><span class="brand-dot">.</span></a>
+      <p class="sidebar-eyebrow">TU TELEVISIÓN, A TU MANERA</p>
+      <div class="sidebar-group">
+        <p class="nav-label">EXPLORAR</p>
+        <button class="side-link active" data-filter="all"><span class="nav-symbol">◫</span> Todos los canales <span class="side-count" id="side-count">—</span></button>
+        <button class="side-link" data-filter="national"><span class="nav-symbol">◎</span> Nacionales</button>
+        <button class="side-link" data-filter="regional"><span class="nav-symbol">▦</span> Autonómicos</button>
+        <button class="side-link" data-filter="favorites"><span class="nav-symbol gold">★</span> Mis favoritos <span class="side-count" id="favorites-count">0</span></button>
+      </div>
+      <div class="sidebar-group regions-group">
+        <p class="nav-label">POR COMUNIDAD</p>
+        <div id="region-links" class="region-links"></div>
+      </div>
+      <div class="sidebar-bottom"><span class="source-led"></span><span>Emisiones públicas<br><small>Enlaces a fuentes oficiales</small></span></div>
+    </aside>
+
+    <div class="main-column">
+      <header class="topbar">
+        <div class="mobile-brand"><span class="brand-mark"><span></span></span>open<span>TV</span><b>.</b></div>
+        <div class="topbar-heading"><span class="topbar-kicker">BIENVENIDO A openTV</span><h1>La tele, <em>sin complicaciones.</em></h1></div>
+        <div class="topbar-actions"><label class="search-box" for="search-input"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg><input id="search-input" type="search" placeholder="Buscar canal..." autocomplete="off" /><kbd>/</kbd></label><span class="topbar-live"><span></span> EN DIRECTO</span></div>
+      </header>
+
+      <main>
+        <section class="watch-section" aria-labelledby="watch-heading">
+          <div class="section-header"><div><span class="eyebrow"><span class="pulse-dot"></span> AHORA EN DIRECTO</span><h2 id="watch-heading">Tu pantalla</h2></div><button class="text-button" id="fullscreen-button" title="Pantalla completa" aria-label="Pantalla completa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg><span>Pantalla completa</span></button></div>
+          <div class="watch-layout">
+            <div class="player-and-info">
+              <div class="player-stage" id="player-stage">
+                <video id="video" playsinline controls preload="none" aria-label="Reproductor en directo"></video>
+                <div class="poster-screen" id="poster-screen"><div class="poster-glow"></div><div class="poster-grid"></div><div class="poster-center"><div class="poster-icon">▶</div><span class="poster-label">TELEVISIÓN EN DIRECTO</span><strong id="poster-channel">ELIGE UN CANAL</strong><p id="poster-subtitle">La televisión pública de España, en un solo lugar.</p><button id="play-main" class="primary-button"><span>▶</span> Reproducir en directo</button></div></div>
+                <div class="player-error" id="player-error" hidden><div class="error-graphic">⌁</div><strong id="error-title">No se puede reproducir esta señal</strong><p id="error-description">Prueba otra fuente o abre la emisión en la web oficial.</p><div class="error-actions"><button id="retry-button" class="primary-button small">↻ Reintentar</button><a id="error-official-link" class="secondary-button small" target="_blank" rel="noopener noreferrer">Web oficial ↗</a></div></div>
+                <span class="player-live-tag"><span></span> DIRECTO</span>
+              </div>
+              <div class="now-playing"><div class="now-logo" id="now-logo">TV</div><div class="now-details"><span class="eyebrow">ESTÁS VIENDO</span><div class="now-title-row"><h3 id="current-title">Selecciona un canal</h3><span class="quality-tag" id="quality-tag">EN VIVO</span></div><p id="current-subtitle">Una selección de televisiones públicas</p></div><div class="now-actions"><button id="favorite-current" class="icon-button" title="Añadir a favoritos" aria-label="Añadir a favoritos">☆</button><a id="official-link" class="icon-button" title="Abrir web oficial" aria-label="Abrir web oficial" target="_blank" rel="noopener noreferrer">↗</a></div></div>
+            </div>
+            <div class="queue-panel"><div class="queue-header"><div><span class="eyebrow">CAMBIA DE CANAL</span><h3>A un clic</h3></div><span class="queue-counter" id="queue-counter">—</span></div><div class="queue-items" id="queue-items"><div class="queue-loading">Cargando canales…</div></div><div class="queue-foot">SIN ANTENA · SIN REGISTRO · GRATIS</div></div>
+          </div>
+        </section>
+
+        <section class="catalog-section" aria-labelledby="catalog-heading"><div class="section-header catalog-heading"><div><span class="eyebrow">DESCUBRE</span><h2 id="catalog-heading">Explora los canales <span class="muted-title" id="channel-count"></span></h2></div><p id="catalog-status">Actualizando catálogo…</p></div><div class="filter-pills" id="filter-pills" aria-label="Filtros de canales"><button class="pill active" data-filter="all">Todos</button><button class="pill" data-filter="national">Nacionales</button><button class="pill" data-filter="regional">Autonómicos</button><button class="pill" data-filter="favorites">★ Favoritos</button></div><div class="channels-grid" id="channels-grid"><div class="loading-card">Buscando emisiones oficiales…</div></div><div class="empty-state" id="empty-state" hidden><strong>No encontramos canales</strong><p>Prueba otra búsqueda o cambia el filtro.</p><button id="reset-filters" class="secondary-button">Mostrar todos</button></div></section>
+      </main>
+      <footer><div><strong>open<span>TV</span></strong> · Hecho para disfrutar de la televisión pública.</div><div>Fuentes: <a href="https://www.tdtchannels.com/" target="_blank" rel="noopener noreferrer">TDTChannels ↗</a> · Las señales pertenecen a sus respectivas cadenas.</div></footer>
+    </div>
+  </div>
+</body>
+</html>

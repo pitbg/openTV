@@ -1,0 +1,18 @@
+services:
+  opentv:
+    build: .
+    container_name: opentv
+    restart: unless-stopped
+    ports:
+      - "${OPENTV_BIND:-127.0.0.1}:${OPENTV_PORT:-3080}:3080"
+    environment:
+      NODE_ENV: production
+      PORT: "3080"
+      OPENTV_CATALOG_TTL_MS: "21600000"
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop:
+      - ALL

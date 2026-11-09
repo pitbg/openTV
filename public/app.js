@@ -1,0 +1,269 @@
+const $ = selector => document.querySelector(selector);
+const elements = {
+  grid: $('#channels-grid'), queue: $('#queue-items'), stage: $('#player-stage'), video: $('#video'),
+  poster: $('#poster-screen'), error: $('#player-error'), play: $('#play-main'),
+  current: $('#current-title'), subtitle: $('#current-subtitle'), posterTitle: $('#poster-channel'),
+  currentLogo: $('#now-logo'), favorite: $('#favorite-current'), official: $('#official-link'),
+  search: $('#search-input'), status: $('#catalog-status'), empty: $('#empty-state')
+};
+
+const safeStored = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
+const state = { channels: [], activeId: safeStored('opentv-last-channel', null), favorites: new Set(safeStored('opentv-favorites', [])), filter: 'all', query: '', region: null, sourceIndex: 0, hls: null, playbackAttempt: 0, started: false };
+const activeChannel = () => state.channels.find(channel => channel.id === state.activeId);
+
+function remember(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Almacenamiento bloqueado */ } }
+
+function logoContent(channel, className) {
+  const box = document.createElement('div');
+  box.className = className;
+  box.textContent = channel.name.replace(/[^A-Za-z0-9À-ÿ]/g, '').slice(0, 3).toUpperCase();
+  if (channel.logo) {
+    const image = document.createElement('img');
+    image.alt = '';
+    image.loading = 'lazy';
+    image.referrerPolicy = 'no-referrer';
+    image.src = channel.logo;
+    image.onerror = () => image.remove();
+    box.append(image);
+  }
+  return box;
+}
+
+function toggleFavorite(channel) {
+  if (state.favorites.has(channel.id)) state.favorites.delete(channel.id);
+  else state.favorites.add(channel.id);
+  remember('opentv-favorites', [...state.favorites]);
+  render();
+}
+
+function selectChannel(channel, shouldPlay = false) {
+  const sameChannel = state.activeId === channel.id;
+  state.activeId = channel.id;
+  if (!sameChannel) {
+    state.sourceIndex = 0;
+    stopPlayback();
+  }
+  remember('opentv-last-channel', channel.id);
+  updateNowPlaying(channel);
+  render();
+  if (shouldPlay) playStream();
+}
+
+function updateNowPlaying(channel) {
+  elements.current.textContent = channel.name;
+  elements.subtitle.textContent = `${channel.broadcaster} · ${channel.region}`;
+  elements.posterTitle.textContent = channel.name.toUpperCase();
+  $('#poster-subtitle').textContent = channel.streams.length ? `${channel.broadcaster} · Señal online oficial` : 'Disponible a través de la web oficial';
+  const newLogo = logoContent(channel, 'now-logo');
+  elements.currentLogo.replaceWith(newLogo);
+  elements.currentLogo = newLogo;
+  elements.favorite.textContent = state.favorites.has(channel.id) ? '★' : '☆';
+  elements.favorite.classList.toggle('is-favorite', state.favorites.has(channel.id));
+  elements.favorite.title = state.favorites.has(channel.id) ? 'Quitar de favoritos' : 'Añadir a favoritos';
+  elements.favorite.setAttribute('aria-label', elements.favorite.title);
+  for (const link of [elements.official, $('#error-official-link')]) {
+    link.hidden = !channel.website;
+    if (channel.website) link.href = channel.website;
+    else link.removeAttribute('href');
+  }
+  $('#quality-tag').textContent = channel.streams.length ? 'EN VIVO' : 'SOLO WEB';
+}
+
+function stopPlayback() {
+  state.playbackAttempt++;
+  if (state.hls) { state.hls.destroy(); state.hls = null; }
+  elements.video.pause();
+  elements.video.removeAttribute('src');
+  elements.video.load();
+  elements.stage.classList.remove('is-playing');
+  elements.error.hidden = true;
+  elements.poster.hidden = false;
+  state.started = false;
+}
+
+function showPlaybackError(title, description) {
+  elements.error.hidden = false;
+  elements.poster.hidden = true;
+  elements.stage.classList.remove('is-playing');
+  $('#error-title').textContent = title;
+  $('#error-description').textContent = description;
+}
+
+async function playStream(index = state.sourceIndex) {
+  const channel = activeChannel();
+  if (!channel) return;
+  if (!channel.streams.length) {
+    showPlaybackError('Sin señal directa disponible', 'Esta cadena solo ofrece su emisión en su propia web. Puedes abrirla con el botón inferior.');
+    return;
+  }
+  if (index >= channel.streams.length) {
+    showPlaybackError('No podemos reproducir este canal aquí', 'La cadena puede limitar el acceso por ubicación, formato o permisos del navegador. Prueba la web oficial.');
+    return;
+  }
+  state.sourceIndex = index;
+  const attempt = ++state.playbackAttempt;
+  if (state.hls) { state.hls.destroy(); state.hls = null; }
+  elements.video.pause();
+  elements.video.removeAttribute('src');
+  elements.video.load();
+  elements.poster.hidden = true;
+  elements.error.hidden = true;
+  elements.stage.classList.add('is-playing');
+  state.started = true;
+  const url = channel.streams[index];
+
+  const startVideo = () => {
+    if (attempt !== state.playbackAttempt) return;
+    elements.video.play().catch(() => {
+      // En ciertos navegadores se necesita pulsar Play en los controles nativos.
+    });
+  };
+  const tryNextSource = () => {
+    if (attempt === state.playbackAttempt) playStream(index + 1);
+  };
+
+  if (elements.video.canPlayType('application/vnd.apple.mpegurl')) {
+    elements.video.src = url;
+    startVideo();
+  } else if (window.Hls?.isSupported()) {
+    const hls = new window.Hls({ enableWorker: true, lowLatencyMode: true, liveSyncDurationCount: 3 });
+    state.hls = hls;
+    hls.on(window.Hls.Events.MANIFEST_PARSED, startVideo);
+    hls.on(window.Hls.Events.ERROR, (_, details) => {
+      if (details.fatal) tryNextSource();
+    });
+    hls.loadSource(url);
+    hls.attachMedia(elements.video);
+  } else {
+    showPlaybackError('Navegador no compatible', 'Este navegador no admite la reproducción HLS. Utiliza una versión reciente o abre la emisión oficial.');
+  }
+}
+
+elements.video.addEventListener('error', () => {
+  if (state.started && !state.hls) playStream(state.sourceIndex + 1);
+});
+elements.play.addEventListener('click', () => playStream());
+$('#retry-button').addEventListener('click', () => playStream(0));
+$('#fullscreen-button').addEventListener('click', () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else if (elements.stage.requestFullscreen) elements.stage.requestFullscreen();
+  else elements.video.webkitEnterFullscreen?.();
+});
+elements.favorite.addEventListener('click', () => { const channel = activeChannel(); if (channel) toggleFavorite(channel); });
+
+function matches(channel) {
+  if (state.filter === 'favorites' && !state.favorites.has(channel.id)) return false;
+  if (state.filter === 'national' && channel.region !== 'Nacional') return false;
+  if (state.filter === 'regional' && channel.region === 'Nacional') return false;
+  if (state.region && channel.region !== state.region) return false;
+  const term = state.query.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return `${channel.name} ${channel.region} ${channel.broadcaster}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(term);
+}
+
+function makeCard(channel) {
+  const card = document.createElement('article');
+  card.className = `channel-card${state.activeId === channel.id ? ' active' : ''}`;
+  card.setAttribute('role', 'button');
+  card.setAttribute('tabindex', '0');
+  card.setAttribute('aria-label', `Ver ${channel.name}`);
+  card.onclick = () => { selectChannel(channel, true); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  card.onkeydown = event => { if (event.target === card && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); card.click(); } };
+
+  const header = document.createElement('div'); header.className = 'card-header';
+  header.append(logoContent(channel, 'card-logo'));
+  const favorite = document.createElement('button');
+  favorite.className = `card-favorite${state.favorites.has(channel.id) ? ' is-favorite' : ''}`;
+  favorite.textContent = state.favorites.has(channel.id) ? '★' : '☆';
+  favorite.title = state.favorites.has(channel.id) ? 'Quitar de favoritos' : 'Añadir a favoritos';
+  favorite.setAttribute('aria-label', `${favorite.title}: ${channel.name}`);
+  favorite.onclick = event => { event.stopPropagation(); toggleFavorite(channel); };
+  header.append(favorite);
+  const name = document.createElement('div'); name.className = 'card-name'; name.textContent = channel.name;
+  const region = document.createElement('div'); region.className = 'card-region'; region.textContent = channel.region;
+  const foot = document.createElement('div'); foot.className = 'card-foot';
+  const signal = document.createElement('span'); signal.className = channel.streams.length ? '' : 'not-embedded';
+  signal.textContent = channel.streams.length ? '● SEÑAL ONLINE' : '↗ WEB OFICIAL';
+  const arrow = document.createElement('span'); arrow.textContent = '↗';
+  foot.append(signal, arrow); card.append(header, name, region, foot);
+  return card;
+}
+
+function makeQueueItem(channel) {
+  const item = document.createElement('button');
+  item.className = `queue-item${state.activeId === channel.id ? ' active' : ''}`;
+  item.onclick = () => selectChannel(channel, true);
+  item.append(logoContent(channel, 'queue-logo'));
+  const text = document.createElement('span'); text.className = 'queue-text';
+  const name = document.createElement('strong'); name.textContent = channel.name;
+  const meta = document.createElement('small'); meta.textContent = channel.region;
+  text.append(name, meta);
+  const arrow = document.createElement('span'); arrow.className = 'queue-arrow'; arrow.textContent = state.activeId === channel.id ? '▶' : '›';
+  item.append(text, arrow);
+  return item;
+}
+
+function render() {
+  const filtered = state.channels.filter(matches);
+  elements.grid.replaceChildren(...filtered.map(makeCard));
+  const queue = state.channels.filter(c => c.streams.length).slice(0, 18);
+  elements.queue.replaceChildren(...queue.map(makeQueueItem));
+  $('#queue-counter').textContent = `${queue.length} CANALES`;
+  $('#channel-count').textContent = `${filtered.length} / ${state.channels.length}`;
+  $('#side-count').textContent = state.channels.length;
+  $('#favorites-count').textContent = state.favorites.size;
+  elements.empty.hidden = filtered.length !== 0 || state.channels.length === 0;
+  document.querySelectorAll('[data-filter]').forEach(button => button.classList.toggle('active', button.dataset.filter === state.filter && !state.region));
+  document.querySelectorAll('[data-region]').forEach(button => button.classList.toggle('active', button.dataset.region === state.region));
+}
+
+function changeFilter(filter, region = null) {
+  state.filter = filter;
+  state.region = region;
+  render();
+  if (window.matchMedia('(max-width: 760px)').matches) $('.catalog-section').scrollIntoView({ behavior: 'smooth' });
+}
+
+document.querySelectorAll('[data-filter]').forEach(button => button.addEventListener('click', () => changeFilter(button.dataset.filter)));
+elements.search.addEventListener('input', () => { state.query = elements.search.value.trim(); render(); });
+$('#reset-filters').addEventListener('click', () => { elements.search.value = ''; state.query = ''; changeFilter('all'); });
+document.addEventListener('keydown', event => {
+  if (event.target.matches('input, textarea, select') || event.metaKey || event.ctrlKey || event.altKey) return;
+  if (event.key === '/') { event.preventDefault(); elements.search.focus(); }
+  if ((event.key === 'ArrowRight' || event.key === 'ArrowLeft') && !event.target.closest('button, video')) {
+    const at = state.channels.findIndex(c => c.id === state.activeId);
+    if (at !== -1) {
+      event.preventDefault();
+      const next = (at + (event.key === 'ArrowRight' ? 1 : -1) + state.channels.length) % state.channels.length;
+      selectChannel(state.channels[next], true);
+    }
+  }
+});
+
+async function initialize() {
+  try {
+    const response = await fetch('/api/channels', { cache: 'no-store' });
+    if (!response.ok) throw new Error('El servicio de canales no está disponible');
+    const data = await response.json();
+    state.channels = data.channels;
+    const regions = [...new Set(state.channels.map(c => c.region).filter(r => r !== 'Nacional'))];
+    const container = $('#region-links');
+    for (const region of regions) {
+      const button = document.createElement('button');
+      button.className = 'region-link'; button.dataset.region = region; button.textContent = region;
+      button.onclick = () => changeFilter('all', region);
+      container.append(button);
+    }
+    if (!state.channels.some(c => c.id === state.activeId)) state.activeId = state.channels[0]?.id || null;
+    if (activeChannel()) updateNowPlaying(activeChannel());
+    elements.status.textContent = data.stale ? 'Catálogo en caché · actualización pendiente' : 'Catálogo actualizado automáticamente';
+    render();
+  } catch {
+    elements.grid.replaceChildren();
+    const message = document.createElement('div'); message.className = 'loading-card';
+    message.textContent = 'No se pudo cargar el catálogo de canales. Comprueba que el servidor tenga acceso a Internet y recarga la página.';
+    elements.grid.append(message);
+    elements.status.textContent = 'No se pudo actualizar el catálogo';
+  }
+}
+
+initialize();
