@@ -13,6 +13,7 @@ services:
       OPENTV_VBOX_TRANSCODE_AUDIO: "${OPENTV_VBOX_TRANSCODE_AUDIO:-true}"
       OPENTV_VBOX_VIDEO_ENCODER: "${OPENTV_VBOX_VIDEO_ENCODER:-cpu}"
       OPENTV_VBOX_VAAPI_DEVICE: "${OPENTV_VBOX_VAAPI_DEVICE:-/dev/dri/renderD128}"
+      OPENTV_VBOX_VAAPI_PIPELINE: "${OPENTV_VBOX_VAAPI_PIPELINE:-encode}"
     security_opt:
       - no-new-privileges:true
     read_only: true

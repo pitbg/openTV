@@ -21,6 +21,7 @@ const vbox = createVBoxService({ playlistUrl: process.env.OPENTV_VBOX_PLAYLIST_U
 const vboxTranscodeAudio = process.env.OPENTV_VBOX_TRANSCODE_AUDIO !== 'false' && process.env.OPENTV_VBOX_TRANSCODE_AUDIO !== '0';
 const vboxVideoEncoder = process.env.OPENTV_VBOX_VIDEO_ENCODER === 'vaapi' ? 'vaapi' : 'cpu';
 const vboxVaapiDevice = process.env.OPENTV_VBOX_VAAPI_DEVICE || '/dev/dri/renderD128';
+const vboxVaapiPipeline = process.env.OPENTV_VBOX_VAAPI_PIPELINE === 'full' ? 'full' : 'encode';
 const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 
 const server = createServer(async (request, response) => {
@@ -106,27 +107,31 @@ async function proxyVBox(request, response, channelId, transcodeVideo = false) {
 // procede del fetch ya validado: FFmpeg no puede seguir redirecciones a otros
 // servidores ni abrir URLs arbitrarias incluidas en una lista M3U.
 async function proxyVBoxWithAac(response, streamUrl, body, controller, transcodeVideo = false) {
-  if (transcodeVideo && vboxVideoEncoder === 'vaapi') {
+  const encoders = transcodeVideo && vboxVideoEncoder === 'vaapi'
+    ? (vboxVaapiPipeline === 'full' ? ['vaapi-full', 'vaapi', 'cpu'] : ['vaapi', 'cpu'])
+    : ['cpu'];
+  let currentBody = body;
+  for (let index = 0; index < encoders.length; index++) {
+    const encoder = encoders[index];
     try {
-      await streamWithFfmpeg(response, body, controller, 'vaapi', transcodeVideo);
+      await streamWithFfmpeg(response, currentBody, controller, encoder, transcodeVideo);
       return;
     } catch (error) {
       if (controller.signal.aborted || response.headersSent) return;
-      console.warn('VBox VA-API no disponible; reintentando con CPU:', error.message.slice(-500));
+      if (index === encoders.length - 1) throw error;
+      console.warn(`VBox FFmpeg ${encoder} no disponible; reintentando con ${encoders[index + 1]}:`, error.message.slice(-500));
       const upstream = await fetch(streamUrl, { signal: controller.signal, redirect: 'error', headers: { Accept: 'video/mp2t, */*', 'Accept-Encoding': 'identity' } });
       if (!upstream.ok || !upstream.body) throw new VBoxError(`El sintonizador no ha podido reabrir este canal (HTTP ${upstream.status}).`);
-      await streamWithFfmpeg(response, upstream.body, controller, 'cpu', transcodeVideo);
-      return;
+      currentBody = upstream.body;
     }
   }
-  await streamWithFfmpeg(response, body, controller, 'cpu', transcodeVideo);
 }
 
 function streamWithFfmpeg(response, body, controller, encoder, transcodeVideo) {
   return new Promise((resolve, reject) => {
     const ffmpeg = spawn('ffmpeg', vboxFfmpegArgs({ transcodeVideo, encoder, vaapiDevice: vboxVaapiDevice }), {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, ...(encoder === 'vaapi' ? { LIBVA_DRIVER_NAME: 'iHD' } : {}) }
+      env: { ...process.env, ...(encoder.startsWith('vaapi') ? { LIBVA_DRIVER_NAME: encoder === 'vaapi-full' ? 'i965' : 'iHD' } : {}) }
     });
     const input = Readable.fromWeb(body);
     let lastError = '';

@@ -101,6 +101,7 @@ test('convierte audio DVB MP2 a AAC y conserva H.264 mediante el proxy', { skip:
         OPENTV_CATALOG_URL: `http://127.0.0.1:${upstreamPort}/catalog.json`,
         OPENTV_VBOX_PLAYLIST_URL: `http://127.0.0.1:${upstreamPort}/vboxSimpleIptv.m3u8`,
         OPENTV_VBOX_VIDEO_ENCODER: 'vaapi',
+        OPENTV_VBOX_VAAPI_PIPELINE: 'full',
         OPENTV_VBOX_VAAPI_DEVICE: '/dev/dri/no-such-device'
       },
       stdio: 'ignore'

@@ -100,7 +100,29 @@ En Linux, algunas GPU Intel pueden codificar H.264 sin sobrecargar tanto la CPU.
 
    También puedes comprobar el codificador real en la cabecera de la petición `?video=progressive` (DevTools → Red → respuesta → `X-OpenTV-Video-Encoder`): `vaapi` significa que la GPU está codificando; `cpu` indica que se ha utilizado el respaldo por software.
 
-La imagen Docker incluye `intel-media-driver` para que pueda cargar `iHD`; el overlay expone exclusivamente `/dev/dri/renderD128` y añade el GID `render` al usuario no privilegiado del contenedor. No expone la GPU en el despliegue normal. Si tienes otro dispositivo DRM, ajusta `compose.gpu.yml` y `OPENTV_VBOX_VAAPI_DEVICE`.
+La imagen Docker incluye `intel-media-driver` (`iHD`) y `libva-intel-driver` (`i965`) en x86_64; el overlay expone exclusivamente `/dev/dri/renderD128` y añade el GID `render` al usuario no privilegiado del contenedor. No expone la GPU en el despliegue normal. Si tienes otro dispositivo DRM, ajusta `compose.gpu.yml` y `OPENTV_VBOX_VAAPI_DEVICE`.
+
+#### Modo experimental: procesar todo el vídeo en la GPU
+
+Telecinco HD emite **H.264 Main 1920×1080 entrelazado (`field_order=tt`), a 25 fps**. El modo VA-API anterior solo codifica por GPU, mientras FFmpeg todavía decodifica, aplica `yadif` y escala con la CPU. El controlador Intel `i965` de la UHD 630 anuncia `VAEntrypointVideoProc` y permite probar un pipeline completo en hardware: decodificación H.264 → `deinterlace_vaapi` → `scale_vaapi` → `h264_vaapi`. Utilizamos desentrelazado bob a frecuencia de fotograma y 720p proporcional (en canales 4:3 el ancho puede ser menor que 1280).
+
+Mantén activa la instancia GPU, exporta el GID si has iniciado una sesión nueva, y añade el tercer archivo de Compose:
+
+```bash
+export OPENTV_RENDER_GID="$(stat -c '%g' /dev/dri/renderD128)"
+docker compose -p opentv-vbox-test \
+  -f compose.yml -f compose.gpu.yml -f compose.gpu-full.yml \
+  up -d --build --force-recreate
+```
+
+La petición `?video=progressive` devuelve `X-OpenTV-Video-Encoder: vaapi-full` si **toda la cadena de vídeo** ha empezado a funcionar en la GPU. Si este modo no consigue arrancar, reintenta con el anterior (`vaapi`, solo codificación) y después con `cpu`. Los fallos después de empezar a enviar vídeo pueden interrumpir la sesión. **No probado todavía con el VBox real:** comprueba imagen, sonido y uso de CPU/GPU; el motor Video de `intel_gpu_top` puede diferir del porcentaje global de GPU.
+
+Para regresar al modo Intel anterior, **sin** la cadena completa de GPU:
+
+```bash
+export OPENTV_RENDER_GID="$(stat -c '%g' /dev/dri/renderD128)"
+docker compose -p opentv-vbox-test -f compose.yml -f compose.gpu.yml up -d --force-recreate
+```
 
 **Para volver a usar únicamente CPU**, quita el overlay al recrear el contenedor de pruebas:
 
@@ -153,6 +175,7 @@ Si NPM y openTV comparten una red de Docker, puedes evitar publicar el puerto a 
 | `OPENTV_VBOX_TRANSCODE_AUDIO` | `true` | Convierte audio de VBox a AAC usando FFmpeg; `false` retransmite el MPEG-TS original |
 | `OPENTV_VBOX_VIDEO_ENCODER` | `cpu` | `cpu` utiliza libx264; `vaapi` prefiere codificación Intel por hardware para el vídeo progresivo |
 | `OPENTV_VBOX_VAAPI_DEVICE` | `/dev/dri/renderD128` | Dispositivo DRM para FFmpeg, debe estar expuesto al contenedor |
+| `OPENTV_VBOX_VAAPI_PIPELINE` | `encode` | `encode` deja los filtros en CPU; `full` usa `i965` para decodificar, desentrelazar, escalar y codificar por GPU (experimental) |
 
 Para pruebas locales se puede indicar `OPENTV_CATALOG_URL` con un catálogo JSON compatible. No es necesario definirla en producción.
 
