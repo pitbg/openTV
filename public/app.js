@@ -127,6 +127,7 @@ async function playDynamicStream(channel) {
   const attempt = state.playbackAttempt;
   elements.poster.hidden = true;
   elements.loading.hidden = false;
+  $('#loading-provider').textContent = `Consultando la señal de ${channel.broadcaster}`;
   try {
     const response = await fetch(`/api/streams/${encodeURIComponent(channel.id)}`, { cache: 'no-store' });
     const body = await response.json();
@@ -139,7 +140,7 @@ async function playDynamicStream(channel) {
     playStream(0);
   } catch (error) {
     if (attempt !== state.playbackAttempt || activeChannel()?.id !== channel.id) return;
-    showPlaybackError('No se ha podido abrir Antena 3', `${error.message} Puedes verlo en la web oficial de Atresplayer.`);
+    showPlaybackError(`No se ha podido abrir ${channel.name}`, `${error.message} Puedes verlo en la web oficial del canal.`);
   }
 }
 
