@@ -9,6 +9,7 @@ services:
       NODE_ENV: production
       PORT: "3080"
       OPENTV_CATALOG_TTL_MS: "21600000"
+      OPENTV_VBOX_PLAYLIST_URL: "${OPENTV_VBOX_PLAYLIST_URL:-}"
     security_opt:
       - no-new-privileges:true
     read_only: true

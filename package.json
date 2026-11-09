@@ -1,6 +1,6 @@
 {
   "name": "opentv",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "Televisión pública española en directo, desde tu navegador",
@@ -13,6 +13,7 @@
     "test": "node --test"
   },
   "dependencies": {
-    "hls.js": "1.7.4"
+    "hls.js": "1.7.4",
+    "mpegts.js": "1.8.2"
   }
 }

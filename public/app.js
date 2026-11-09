@@ -8,7 +8,7 @@ const elements = {
 };
 
 const safeStored = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
-const state = { channels: [], activeId: safeStored('opentv-last-channel', null), favorites: new Set(safeStored('opentv-favorites', [])), filter: 'all', query: '', region: null, sourceIndex: 0, hls: null, playbackAttempt: 0, started: false, embedAlternative: false };
+const state = { channels: [], activeId: safeStored('opentv-last-channel', null), favorites: new Set(safeStored('opentv-favorites', [])), filter: 'all', query: '', region: null, sourceIndex: 0, hls: null, mpegts: null, playbackAttempt: 0, started: false, embedAlternative: false };
 const activeChannel = () => state.channels.find(channel => channel.id === state.activeId);
 
 function remember(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Almacenamiento bloqueado */ } }
@@ -53,7 +53,7 @@ function updateNowPlaying(channel) {
   elements.current.textContent = channel.name;
   elements.subtitle.textContent = `${channel.broadcaster} · ${channel.region}`;
   elements.posterTitle.textContent = channel.name.toUpperCase();
-  $('#poster-subtitle').textContent = channel.streams.length || channel.embedUrl || channel.dynamicStream ? `${channel.broadcaster} · Emisión online oficial` : 'Disponible a través de la web oficial';
+  $('#poster-subtitle').textContent = channel.localStream ? 'Señal TDT desde tu sintonizador VBox' : channel.streams.length || channel.embedUrl || channel.dynamicStream ? `${channel.broadcaster} · Emisión online oficial` : 'Disponible a través de la web oficial';
   const newLogo = logoContent(channel, 'now-logo');
   elements.currentLogo.replaceWith(newLogo);
   elements.currentLogo = newLogo;
@@ -66,14 +66,15 @@ function updateNowPlaying(channel) {
     if (channel.website) link.href = channel.website;
     else link.removeAttribute('href');
   }
-  $('#quality-tag').textContent = channel.streams.length || channel.embedUrl || channel.dynamicStream ? 'EN VIVO' : 'SOLO WEB';
-  $('#retry-button').hidden = !channel.streams.length && !channel.embedUrl && !channel.dynamicStream;
+  $('#quality-tag').textContent = channel.localStream ? 'TDT LOCAL' : channel.streams.length || channel.embedUrl || channel.dynamicStream ? 'EN VIVO' : 'SOLO WEB';
+  $('#retry-button').hidden = !channel.localStream && !channel.streams.length && !channel.embedUrl && !channel.dynamicStream;
   $('#error-embed-button').hidden = !channel.dynamicStream || !channel.embedUrl;
 }
 
 function stopPlayback() {
   state.playbackAttempt++;
   if (state.hls) { state.hls.destroy(); state.hls = null; }
+  if (state.mpegts) { state.mpegts.destroy(); state.mpegts = null; }
   elements.video.pause();
   elements.video.removeAttribute('src');
   elements.video.load();
@@ -117,9 +118,39 @@ function playEmbedded(useAlternative = false) {
 function playChannel() {
   const channel = activeChannel();
   if (!channel) return;
+  if (channel.localStream) return playLocalStream(channel);
   if (channel.dynamicStream) return playDynamicStream(channel);
   if (channel.embedUrl && (channel.preferEmbed || !channel.streams.length)) playEmbedded();
   else playStream(0);
+}
+
+function playLocalStream(channel) {
+  stopPlayback();
+  if (!window.mpegts?.isSupported()) {
+    showPlaybackError('Navegador no compatible con TDT local', 'Este navegador no puede reproducir la señal MPEG-TS del VBox. Prueba Firefox, Chrome o Safari actualizado.');
+    return;
+  }
+  const attempt = state.playbackAttempt;
+  elements.poster.hidden = true;
+  elements.error.hidden = true;
+  elements.stage.classList.add('is-playing');
+  state.started = true;
+  try {
+    const player = window.mpegts.createPlayer({
+      type: 'mpegts', isLive: true, url: channel.localStreamUrl
+    }, { lazyLoad: false, enableStashBuffer: false, autoCleanupSourceBuffer: true });
+    state.mpegts = player;
+    player.on(window.mpegts.Events.ERROR, () => {
+      if (attempt === state.playbackAttempt) {
+        showPlaybackError('No se ha podido reproducir la señal del VBox', 'Comprueba que el sintonizador está encendido y que el canal funciona en VLC. Algunos códecs no son compatibles con todos los navegadores.');
+      }
+    });
+    player.attachMediaElement(elements.video);
+    player.load();
+    elements.video.play().catch(() => { /* El navegador puede exigir pulsar Play. */ });
+  } catch {
+    if (attempt === state.playbackAttempt) showPlaybackError('Error al iniciar la TDT', 'No se ha podido preparar la reproducción local del VBox.');
+  }
 }
 
 async function playDynamicStream(channel) {
@@ -201,7 +232,7 @@ async function playStream(index = state.sourceIndex) {
 }
 
 elements.video.addEventListener('error', () => {
-  if (state.started && !state.hls && elements.stage.classList.contains('is-playing')) playStream(state.sourceIndex + 1);
+  if (state.started && !state.hls && !state.mpegts && elements.stage.classList.contains('is-playing')) playStream(state.sourceIndex + 1);
 });
 elements.play.addEventListener('click', playChannel);
 $('#retry-button').addEventListener('click', playChannel);
@@ -245,8 +276,8 @@ function makeCard(channel) {
   const name = document.createElement('div'); name.className = 'card-name'; name.textContent = channel.name;
   const region = document.createElement('div'); region.className = 'card-region'; region.textContent = channel.region;
   const foot = document.createElement('div'); foot.className = 'card-foot';
-  const signal = document.createElement('span'); signal.className = channel.streams.length || channel.embedUrl ? '' : 'not-embedded';
-  signal.textContent = channel.dynamicStream ? '● HLS DINÁMICO' : channel.embedUrl ? '● PLAYER OFICIAL' : channel.streams.length ? '● SEÑAL ONLINE' : '↗ WEB OFICIAL';
+  const signal = document.createElement('span'); signal.className = channel.localStream || channel.streams.length || channel.embedUrl ? '' : 'not-embedded';
+  signal.textContent = channel.localStream ? '● TDT LOCAL' : channel.dynamicStream ? '● HLS DINÁMICO' : channel.embedUrl ? '● PLAYER OFICIAL' : channel.streams.length ? '● SEÑAL ONLINE' : '↗ WEB OFICIAL';
   const arrow = document.createElement('span'); arrow.textContent = '↗';
   foot.append(signal, arrow); card.append(header, name, region, foot);
   return card;
@@ -319,7 +350,10 @@ async function initialize() {
     }
     if (!state.channels.some(c => c.id === state.activeId)) state.activeId = state.channels[0]?.id || null;
     if (activeChannel()) updateNowPlaying(activeChannel());
-    elements.status.textContent = data.stale ? 'Catálogo en caché · actualización pendiente' : 'Catálogo actualizado automáticamente';
+    elements.status.textContent = data.vbox?.connected
+      ? `VBox conectado · ${data.vbox.count} canales locales`
+      : data.vbox?.enabled ? 'VBox sin conexión · canales online disponibles'
+        : data.stale ? 'Catálogo en caché · actualización pendiente' : 'Catálogo actualizado automáticamente';
     render();
   } catch {
     elements.grid.replaceChildren();
