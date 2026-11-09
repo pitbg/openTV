@@ -45,6 +45,33 @@ Si tienes un VBox TV Gateway conectado a la antena y a la misma red que el servi
 
    La respuesta debe mostrar `"vbox": { "enabled": true, "connected": true, ... }`. Si aparece `connected: false`, comprueba IP, puerto, alcance de la red Docker y que el VBox esté encendido.
 
+### Probar la rama sin parar tu openTV actual
+
+Mientras la integración se valida con el hardware real, puedes ejecutar una segunda instancia aislada:
+
+```bash
+git clone --branch feat/vbox-local-tdt https://github.com/pitbg/openTV.git opentv-vbox-test
+cd opentv-vbox-test
+```
+
+Crea un `.env` en **esa carpeta** con:
+
+```env
+OPENTV_BIND=0.0.0.0
+OPENTV_PORT=3081
+OPENTV_CONTAINER_NAME=opentv-vbox-test
+OPENTV_VBOX_PLAYLIST_URL=http://192.168.1.15:55555/vboxSimpleIptv.m3u8
+```
+
+Y levántalo de manera independiente:
+
+```bash
+docker compose -p opentv-vbox-test up -d --build
+curl -s http://127.0.0.1:3081/api/health
+```
+
+Abre `http://IP_DEL_PITSERVER:3081` desde tu red local. Esta instancia no sustituye al servicio actual. Evita publicar el puerto de pruebas en Internet. Cuando termines, puedes pararla desde esa misma carpeta con `docker compose -p opentv-vbox-test down`.
+
 Los canales de la lista local se incorporan al catálogo y se priorizan automáticamente. El frontend marca **TDT LOCAL**. Si el VBox está apagado, siguen disponibles los canales online; el servicio conserva temporalmente el último listado y reintenta la conexión. La lista se refresca cada minuto.
 
 **Compatibilidad:** MPEG-TS es un contenedor. La reproducción web depende de los códecs emitidos y del soporte MSE del navegador. Si un canal usa un códec de vídeo no admitido (por ejemplo, MPEG-2 Video), puede verse en VLC pero no en openTV; habría que añadir transcodificación para ese canal. Safari reciente, Chrome y Firefox modernos admiten las funcionalidades necesarias en plataformas compatibles.
@@ -86,6 +113,7 @@ Si NPM y openTV comparten una red de Docker, puedes evitar publicar el puerto a 
 | --- | --- | --- |
 | `OPENTV_BIND` | `127.0.0.1` | Interfaz de red del host donde se publica el puerto |
 | `OPENTV_PORT` | `3080` | Puerto externo del servicio |
+| `OPENTV_CONTAINER_NAME` | `opentv` | Nombre del contenedor; permite probar otra instancia sin colisiones |
 | `OPENTV_CATALOG_TTL_MS` | `21600000` | Tiempo de actualización del catálogo, en milisegundos (configurable en `compose.yml`) |
 | `OPENTV_VBOX_PLAYLIST_URL` | vacío | Lista IPTV del VBox; si está vacía, la integración TDT está desactivada |
 

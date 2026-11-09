@@ -1,7 +1,7 @@
 services:
   opentv:
     build: .
-    container_name: opentv
+    container_name: "${OPENTV_CONTAINER_NAME:-opentv}"
     restart: unless-stopped
     ports:
       - "${OPENTV_BIND:-127.0.0.1}:${OPENTV_PORT:-3080}:3080"
