@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { VBoxError, createVBoxService, mergeVBoxChannels, parseVBoxPlaylist, vboxPlaylistUrl } from '../lib/vbox.mjs';
+import { channelLogoFallback } from '../lib/channel-logos.mjs';
 
 const playlistUrl = 'http://192.168.1.15:55555/vboxSimpleIptv.m3u8';
 const sample = `#EXTM3U
@@ -60,7 +61,20 @@ http://192.168.1.15:55555/tdp%20HD
   assert.equal(merged.filter(channel => channel.id === 'antena-3').length, 1);
   assert.equal(merged.filter(channel => channel.id === 'teledeporte').length, 1);
   assert.equal(merged.find(channel => channel.id === 'antena-3').localStream, true);
+  assert.equal(merged.find(channel => channel.id === 'antena-3').logo, channelLogoFallback('antena-3'));
   assert.equal(merged.find(channel => channel.id === 'teledeporte').streams.length, 1);
+});
+
+test('los canales exclusivos de VBox utilizan logos válidos en vez del repositorio retirado', () => {
+  const playlist = `#EXTM3U
+#EXTINF:-1 tvg-logo="https://raw.githubusercontent.com/maincenter/Logotipos-TV/master/main/transparentes/FDF.png",FDF
+http://192.168.1.15:55555/FDF
+#EXTINF:-1,Dejate TV
+http://192.168.1.15:55555/Dejate%20TV
+`;
+  const merged = mergeVBoxChannels([], parseVBoxPlaylist(playlist, playlistUrl));
+  assert.equal(merged.find(channel => channel.id === 'fdf').logo, channelLogoFallback('fdf'));
+  assert.equal(merged.find(channel => channel.id === 'dejate-tv').logo, channelLogoFallback('dejate-tv'));
 });
 
 test('clasifica los canales generalistas del VBox en el ámbito nacional y conserva las emisoras locales', () => {

@@ -24,13 +24,18 @@ function logoContent(channel, className) {
   const box = document.createElement('div');
   box.className = className;
   box.textContent = channel.name.replace(/[^A-Za-z0-9À-ÿ]/g, '').slice(0, 3).toUpperCase();
-  if (channel.logo) {
+  const logos = [...new Set([channel.logo, channel.logoFallback].filter(Boolean))];
+  if (logos.length) {
     const image = document.createElement('img');
     image.alt = '';
     image.loading = 'lazy';
     image.referrerPolicy = 'no-referrer';
-    image.src = channel.logo;
-    image.onerror = () => image.remove();
+    let index = 0;
+    image.onerror = () => {
+      if (++index < logos.length) image.src = logos[index];
+      else image.remove();
+    };
+    image.src = logos[index];
     box.append(image);
   }
   return box;
