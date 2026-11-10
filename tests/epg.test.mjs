@@ -99,6 +99,22 @@ test('combina EPG del VBox y TDTChannels, priorizando emisiones disponibles', ()
   assert.equal(guide.fdf, undefined);
 });
 
+test('La Séptima utiliza la nueva guía y no hereda el tvg-id antiguo de Atreseries', () => {
+  const oldVBox = parseXmltv(`<tv>
+    <channel id="Atreseries.TV"><display-name>Atreseries</display-name></channel>
+    <programme channel="Atreseries.TV" start="20261110200000 +0100" stop="20261110210000 +0100"><title>Programa antiguo</title></programme>
+  </tv>`);
+  const updatedTdt = parseXmltv(`<tv>
+    <channel id="LaSeptima.TV"><display-name>La Séptima</display-name></channel>
+    <programme channel="LaSeptima.TV" start="20261110200000 +0100" stop="20261110210000 +0100"><title>El pulso</title></programme>
+  </tv>`);
+  const guide = matchGuide([{ id: 'la-septima', name: 'La Séptima' }],
+    [{ id: 'la-septima', name: 'La Septima HD', epgId: 'Atreseries.TV' }],
+    [{ id: 'vbox', data: oldVBox }, { id: 'tdtchannels', data: updatedTdt }], testTime);
+  assert.equal(guide['la-septima'].now.title, 'El pulso');
+  assert.equal(guide['la-septima'].source, 'tdtchannels');
+});
+
 test('corrige IDs reales de TDTChannels y reutiliza la guía accesible de Canal Sur', () => {
   const channels = [
     { id: '33', name: '33' },

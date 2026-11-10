@@ -48,6 +48,20 @@ test('rechaza formatos de catálogo inesperados', () => {
   assert.throws(() => parseCatalog({ countries: [{ name: 'France' }] }), /España/);
 });
 
+test('integra La Séptima como canal nacional con su ficha oficial y sin inventar HLS', () => {
+  const fixture = structuredClone(sample);
+  fixture.countries[0].ambits[0].channels.push({
+    name: 'La Séptima', logo: 'https://pbs.twimg.com/profile_images/2074450480743297024/UTvLXCSQ_200x200.jpg',
+    web: 'https://laseptima.com/la-septima-tv-directo/',
+    options: [{ format: 'youtube', url: 'https://www.youtube.com/channel/example/live' }]
+  });
+  const channel = parseCatalog(fixture).find(item => item.id === 'la-septima');
+  assert.equal(channel.name, 'La Séptima');
+  assert.equal(channel.region, 'Nacional');
+  assert.equal(channel.website, 'https://laseptima.com/la-septima-tv-directo/');
+  assert.equal(channel.streams.length, 0);
+});
+
 test('mantiene la última versión correcta si falla la actualización', async () => {
   let time = 1000;
   let calls = 0;

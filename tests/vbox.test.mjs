@@ -98,6 +98,20 @@ http://192.168.1.15:55555/Dejate%20TV
   assert.equal(merged.find(channel => channel.id === 'dejate-tv').region, 'Madrid');
 });
 
+test('reconoce La Séptima como cadena nacional y recupera su logo sin confundirla con Atreseries', () => {
+  const playlist = `#EXTM3U
+#EXTINF:-1 tvg-id="Atreseries.TV",La Septima HD
+http://192.168.1.15:55555/La%20Septima%20HD
+`;
+  const parsed = parseVBoxPlaylist(playlist, playlistUrl);
+  assert.equal(parsed[0].id, 'la-septima');
+  const merged = mergeVBoxChannels([], parsed);
+  assert.equal(merged[0].name, 'La Séptima');
+  assert.equal(merged[0].region, 'Nacional');
+  assert.equal(merged[0].logo, channelLogoFallback('la-septima'));
+  assert.equal(merged[0].localStreamUrl, '/api/vbox/stream/la-septima');
+});
+
 test('recarga la lista con caché y conserva la última copia si falla el VBox', async () => {
   let time = 100;
   let calls = 0;
