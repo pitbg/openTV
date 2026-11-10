@@ -115,7 +115,7 @@ docker compose -p opentv-vbox-test \
   up -d --build --force-recreate
 ```
 
-La petición `?video=progressive` devuelve `X-OpenTV-Video-Encoder: vaapi-full` si **toda la cadena de vídeo** ha empezado a funcionar en la GPU. Si este modo no consigue arrancar, reintenta con el anterior (`vaapi`, solo codificación) y después con `cpu`. Los fallos después de empezar a enviar vídeo pueden interrumpir la sesión. **No probado todavía con el VBox real:** comprueba imagen, sonido y uso de CPU/GPU; el motor Video de `intel_gpu_top` puede diferir del porcentaje global de GPU.
+La petición `?video=progressive` devuelve `X-OpenTV-Video-Encoder: vaapi-full` si **toda la cadena de vídeo** ha empezado a funcionar en la GPU. Si este modo no consigue arrancar, reintenta con el anterior (`vaapi`, solo codificación) y después con `cpu`. Los fallos después de empezar a enviar vídeo pueden interrumpir la sesión. **Probado por Pedro con el VBox y la Intel UHD 630 reales:** Firefox reproduce correctamente y el uso de CPU baja mucho al trasladar el trabajo a la GPU. El motor Video de `intel_gpu_top` puede diferir del porcentaje global de GPU.
 
 Para regresar al modo Intel anterior, **sin** la cadena completa de GPU:
 
