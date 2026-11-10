@@ -19,3 +19,12 @@ main{padding:34px clamp(24px,4vw,64px) 52px;max-width:1900px;margin:auto}.sectio
 @keyframes opentv-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.loading-spinner{animation:none}}
 .embed-switch{border:0;border-right:1px solid #596273;background:transparent;padding:0 9px 0 0;color:var(--lime);font-size:10px;font-weight:750}
+.source-options{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:13px 0 0 75px}
+.source-options[hidden]{display:none}
+.source-options-label{font-size:9px;font-weight:800;letter-spacing:1.2px;color:#8491a3;margin-right:2px}
+.source-option{display:inline-flex;align-items:center;gap:7px;background:#202938;color:#b4c0d0;border:1px solid #394558;border-radius:9px;padding:8px 11px;font-size:11px;font-weight:750;cursor:pointer}
+.source-option small{font-size:9px;font-weight:550;color:#91a0b0}
+.source-option:hover{border-color:#9abf8b;color:#fff}
+.source-option.active{color:var(--lime);background:#223629;border-color:#6f9c69}
+.source-option.active small{color:#b8d9ab}
+@media(max-width:760px){.source-options{margin-left:0}.source-options-label{width:100%}}

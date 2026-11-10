@@ -1,3 +1,5 @@
+import { canFallbackToLocal, defaultSource, hasOnlineSource } from './source-policy.js';
+
 const $ = selector => document.querySelector(selector);
 const elements = {
   grid: $('#channels-grid'), queue: $('#queue-items'), stage: $('#player-stage'), video: $('#video'), embed: $('#embedded-player'), embedActions: $('#embed-actions'),
@@ -8,7 +10,7 @@ const elements = {
 };
 
 const safeStored = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
-const state = { channels: [], activeId: safeStored('opentv-last-channel', null), favorites: new Set(safeStored('opentv-favorites', [])), filter: 'all', query: '', region: null, sourceIndex: 0, hls: null, mpegts: null, playbackAttempt: 0, started: false, embedAlternative: false };
+const state = { channels: [], activeId: safeStored('opentv-last-channel', null), favorites: new Set(safeStored('opentv-favorites', [])), filter: 'all', query: '', region: null, sourceMode: 'online', usedFallback: false, sourceIndex: 0, hls: null, mpegts: null, playbackAttempt: 0, started: false, embedAlternative: false };
 const activeChannel = () => state.channels.find(channel => channel.id === state.activeId);
 
 function remember(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Almacenamiento bloqueado */ } }
@@ -39,8 +41,10 @@ function toggleFavorite(channel) {
 function selectChannel(channel, shouldPlay = false) {
   const sameChannel = state.activeId === channel.id;
   state.activeId = channel.id;
-  if (!sameChannel) {
-    state.sourceIndex = 0;
+  state.sourceMode = defaultSource(channel);
+  state.usedFallback = false;
+  state.sourceIndex = 0;
+  if (!sameChannel || shouldPlay) {
     stopPlayback();
   }
   remember('opentv-last-channel', channel.id);
@@ -49,11 +53,45 @@ function selectChannel(channel, shouldPlay = false) {
   if (shouldPlay) playChannel();
 }
 
+function updateSourceControls(channel) {
+  const both = hasOnlineSource(channel) && channel.localStream;
+  $('#source-options').hidden = !both;
+  for (const [mode, selector] of [['online', '#source-online'], ['local', '#source-local']]) {
+    const button = $(selector);
+    const active = state.sourceMode === mode;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  }
+  const local = state.sourceMode === 'local';
+  $('#quality-tag').textContent = local ? 'TDT LOCAL' : hasOnlineSource(channel) ? 'EN VIVO · ONLINE' : 'SOLO WEB';
+  $('#poster-subtitle').textContent = local ? 'Señal TDT desde tu sintonizador VBox' : hasOnlineSource(channel) ? `${channel.broadcaster} · Emisión online oficial` : 'Disponible a través de la web oficial';
+  elements.subtitle.textContent = `${channel.broadcaster} · ${channel.region}${state.usedFallback ? ' · Respaldo TDT activado' : ''}`;
+}
+
+function chooseSource(mode) {
+  const channel = activeChannel();
+  if (!channel || (mode === 'online' && !hasOnlineSource(channel)) || (mode === 'local' && !channel.localStream)) return;
+  state.sourceMode = mode;
+  state.usedFallback = false;
+  state.sourceIndex = 0;
+  stopPlayback();
+  updateSourceControls(channel);
+  playChannel();
+}
+
+function fallbackToLocal(channel, reason) {
+  if (activeChannel()?.id !== channel.id || !canFallbackToLocal(channel, state.sourceMode)) return false;
+  console.warn(`No se ha podido reproducir la señal online de ${channel.name}; usando el VBox.`, reason);
+  state.sourceMode = 'local';
+  state.usedFallback = true;
+  updateSourceControls(channel);
+  playLocalStream(channel);
+  return true;
+}
+
 function updateNowPlaying(channel) {
   elements.current.textContent = channel.name;
-  elements.subtitle.textContent = `${channel.broadcaster} · ${channel.region}`;
   elements.posterTitle.textContent = channel.name.toUpperCase();
-  $('#poster-subtitle').textContent = channel.localStream ? 'Señal TDT desde tu sintonizador VBox' : channel.streams.length || channel.embedUrl || channel.dynamicStream ? `${channel.broadcaster} · Emisión online oficial` : 'Disponible a través de la web oficial';
   const newLogo = logoContent(channel, 'now-logo');
   elements.currentLogo.replaceWith(newLogo);
   elements.currentLogo = newLogo;
@@ -66,7 +104,7 @@ function updateNowPlaying(channel) {
     if (channel.website) link.href = channel.website;
     else link.removeAttribute('href');
   }
-  $('#quality-tag').textContent = channel.localStream ? 'TDT LOCAL' : channel.streams.length || channel.embedUrl || channel.dynamicStream ? 'EN VIVO' : 'SOLO WEB';
+  updateSourceControls(channel);
   $('#retry-button').hidden = !channel.localStream && !channel.streams.length && !channel.embedUrl && !channel.dynamicStream;
   $('#error-embed-button').hidden = !channel.dynamicStream || !channel.embedUrl;
 }
@@ -118,7 +156,7 @@ function playEmbedded(useAlternative = false) {
 function playChannel() {
   const channel = activeChannel();
   if (!channel) return;
-  if (channel.localStream) return playLocalStream(channel);
+  if (state.sourceMode === 'local' && channel.localStream) return playLocalStream(channel);
   if (channel.dynamicStream) return playDynamicStream(channel);
   if (channel.embedUrl && (channel.preferEmbed || !channel.streams.length)) playEmbedded();
   else playStream(0);
@@ -177,6 +215,7 @@ async function playDynamicStream(channel) {
     playStream(0);
   } catch (error) {
     if (attempt !== state.playbackAttempt || activeChannel()?.id !== channel.id) return;
+    if (fallbackToLocal(channel, error.message)) return;
     showPlaybackError(`No se ha podido abrir ${channel.name}`, `${error.message} Puedes verlo en la web oficial del canal.`);
   }
 }
@@ -186,11 +225,13 @@ async function playStream(index = state.sourceIndex) {
   if (!channel) return;
   if (!channel.streams.length) {
     if (channel.embedUrl && !channel.dynamicStream) return playEmbedded();
+    if (fallbackToLocal(channel, 'No hay señales HLS disponibles')) return;
     showPlaybackError('Sin señal directa disponible', 'Esta cadena solo ofrece su emisión en su propia web. Puedes abrirla con el botón inferior.');
     return;
   }
   if (index >= channel.streams.length) {
     if (channel.embedUrl && !channel.dynamicStream) return playEmbedded();
+    if (fallbackToLocal(channel, 'Todas las fuentes HLS han fallado')) return;
     showPlaybackError('No podemos reproducir este canal aquí', 'No ha funcionado ninguna fuente HLS. La cadena puede limitar su acceso o impedir la reproducción fuera de su web oficial.');
     return;
   }
@@ -233,6 +274,7 @@ async function playStream(index = state.sourceIndex) {
     hls.loadSource(url);
     hls.attachMedia(elements.video);
   } else {
+    if (fallbackToLocal(channel, 'El navegador no admite HLS')) return;
     showPlaybackError('Navegador no compatible', 'Este navegador no admite la reproducción HLS. Utiliza una versión reciente o abre la emisión oficial.');
   }
 }
@@ -242,6 +284,8 @@ elements.video.addEventListener('error', () => {
 });
 elements.play.addEventListener('click', playChannel);
 $('#retry-button').addEventListener('click', playChannel);
+$('#source-online').addEventListener('click', () => chooseSource('online'));
+$('#source-local').addEventListener('click', () => chooseSource('local'));
 $('#try-hls-button').addEventListener('click', () => activeChannel()?.dynamicStream ? playChannel() : playStream(0));
 $('#try-embed-button').addEventListener('click', () => playEmbedded(!state.embedAlternative));
 $('#error-embed-button').addEventListener('click', () => playEmbedded());
@@ -282,8 +326,9 @@ function makeCard(channel) {
   const name = document.createElement('div'); name.className = 'card-name'; name.textContent = channel.name;
   const region = document.createElement('div'); region.className = 'card-region'; region.textContent = channel.region;
   const foot = document.createElement('div'); foot.className = 'card-foot';
-  const signal = document.createElement('span'); signal.className = channel.localStream || channel.streams.length || channel.embedUrl ? '' : 'not-embedded';
-  signal.textContent = channel.localStream ? '● TDT LOCAL' : channel.dynamicStream ? '● HLS DINÁMICO' : channel.embedUrl ? '● PLAYER OFICIAL' : channel.streams.length ? '● SEÑAL ONLINE' : '↗ WEB OFICIAL';
+  const signal = document.createElement('span'); signal.className = channel.localStream || hasOnlineSource(channel) ? '' : 'not-embedded';
+  const sourceLabel = channel.dynamicStream ? '● HLS DINÁMICO' : channel.preferEmbed && channel.embedUrl ? '● PLAYER OFICIAL' : channel.streams.length ? '● SEÑAL ONLINE' : channel.embedUrl ? '● PLAYER OFICIAL' : channel.localStream ? '● TDT LOCAL' : '↗ WEB OFICIAL';
+  signal.textContent = hasOnlineSource(channel) && channel.localStream ? `${sourceLabel} · TDT` : sourceLabel;
   const arrow = document.createElement('span'); arrow.textContent = '↗';
   foot.append(signal, arrow); card.append(header, name, region, foot);
   return card;
@@ -355,6 +400,7 @@ async function initialize() {
       container.append(button);
     }
     if (!state.channels.some(c => c.id === state.activeId)) state.activeId = state.channels[0]?.id || null;
+    state.sourceMode = defaultSource(activeChannel());
     if (activeChannel()) updateNowPlaying(activeChannel());
     elements.status.textContent = data.vbox?.connected
       ? `VBox conectado · ${data.vbox.count} canales locales`

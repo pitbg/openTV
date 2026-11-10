@@ -43,6 +43,26 @@ test('añade señales locales sin modificar el catálogo original', () => {
   assert.equal(merged[2].website, null);
 });
 
+test('reconoce variantes VBox de Antena 3 y Teledeporte sin duplicar las fichas online', () => {
+  const playlist = `${sample}#EXTINF:-1,antena3 HD
+http://192.168.1.15:55555/antena3%20HD
+#EXTINF:-1,tdp HD
+http://192.168.1.15:55555/tdp%20HD
+`;
+  const parsed = parseVBoxPlaylist(playlist, playlistUrl);
+  assert.ok(parsed.some(channel => channel.id === 'antena-3'));
+  assert.ok(parsed.some(channel => channel.id === 'teledeporte'));
+  const catalog = [
+    { id: 'antena-3', name: 'Antena 3', dynamicStream: true, streams: [] },
+    { id: 'teledeporte', name: 'Teledeporte', streams: ['https://example.com/teledeporte.m3u8'] }
+  ];
+  const merged = mergeVBoxChannels(catalog, parsed);
+  assert.equal(merged.filter(channel => channel.id === 'antena-3').length, 1);
+  assert.equal(merged.filter(channel => channel.id === 'teledeporte').length, 1);
+  assert.equal(merged.find(channel => channel.id === 'antena-3').localStream, true);
+  assert.equal(merged.find(channel => channel.id === 'teledeporte').streams.length, 1);
+});
+
 test('recarga la lista con caché y conserva la última copia si falla el VBox', async () => {
   let time = 100;
   let calls = 0;
