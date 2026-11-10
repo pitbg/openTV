@@ -74,7 +74,8 @@ const server = createServer(async (request, response) => {
   try {
     const stat = statSync(file);
     if (!stat.isFile()) throw Error('Not a file');
-    response.writeHead(200, { 'Content-Type': mime[extname(file)] || 'application/octet-stream', 'Content-Length': stat.size, 'Cache-Control': pathname === '/' ? 'no-cache' : 'public, max-age=3600' });
+    const revalidate = pathname === '/' || pathname === '/app.js' || pathname === '/styles.css';
+    response.writeHead(200, { 'Content-Type': mime[extname(file)] || 'application/octet-stream', 'Content-Length': stat.size, 'Cache-Control': revalidate ? 'no-cache' : 'public, max-age=3600' });
     if (request.method === 'HEAD') return response.end();
     createReadStream(file).pipe(response);
   } catch { reply(response, 404, { error: 'No encontrado' }); }
@@ -111,11 +112,12 @@ async function proxyVBox(request, response, channelId, transcodeVideo = false) {
 
 // La TDT española puede emitir audio MP2, que VLC entiende pero que los
 // navegadores no admiten normalmente dentro de MP4/MSE. FFmpeg copia el vídeo
-// H.264 original y convierte solo la primera pista de audio a AAC. Si Firefox
-// falla en VideoToolbox/MSE, el cliente puede solicitar vídeo H.264 progresivo
-// mediante ?video=progressive. Se intenta VA-API únicamente si se habilita en
+// H.264 original y convierte solo la primera pista de audio a AAC. Si el
+// navegador no admite el H.264 entrelazado (o si es iOS), el cliente puede
+// solicitar vídeo H.264 progresivo mediante ?video=progressive. Se intenta
+// VA-API únicamente si se habilita en
 // el servidor. Ante un fallo al iniciar la GPU se reabre la señal y se utiliza
-// libx264, sin modificar la vía original que funciona en Safari. La entrada
+// libx264, manteniendo disponible la vía original sin recodificar. La entrada
 // procede del fetch ya validado: FFmpeg no puede seguir redirecciones a otros
 // servidores ni abrir URLs arbitrarias incluidas en una lista M3U.
 async function proxyVBoxWithAac(response, streamUrl, body, controller, transcodeVideo = false) {

@@ -1,5 +1,6 @@
 import { canFallbackToLocal, defaultSource, hasOnlineSource } from './source-policy.js';
 import { TIMELINE_PIXELS_PER_MINUTE, timelinePosition, timelinePrograms, timelineRange, timelineTicks } from './guide-timeline.js';
+import { prefersProgressiveTdt, shouldRetryProgressiveTdt } from './local-playback-policy.js';
 
 const $ = selector => document.querySelector(selector);
 const elements = {
@@ -195,7 +196,7 @@ function playChannel() {
   else playStream(0);
 }
 
-function playLocalStream(channel, convertVideo = false) {
+function playLocalStream(channel, convertVideo = prefersProgressiveTdt(navigator)) {
   stopPlayback();
   if (!window.mpegts?.getFeatureList()?.mseLivePlayback) {
     showPlaybackError('Navegador no compatible con TDT local', 'Este navegador no puede reproducir la señal MPEG-TS del VBox. Prueba Firefox, Chrome o Safari actualizado.');
@@ -214,8 +215,8 @@ function playLocalStream(channel, convertVideo = false) {
     player.on(window.mpegts.Events.ERROR, (type, detail, info) => {
       console.error('Error reproduciendo TDT local:', { type, detail, info });
       if (attempt === state.playbackAttempt) {
-        if (!convertVideo && /Firefox\//.test(navigator.userAgent) && detail === 'MediaMSEError') {
-          console.warn('Firefox ha rechazado el H.264 original; probando vídeo progresivo compatible.');
+        if (shouldRetryProgressiveTdt(convertVideo, type, detail)) {
+          console.warn('El navegador ha rechazado la señal TDT original; probando vídeo progresivo compatible.');
           playLocalStream(channel, true);
           return;
         }
