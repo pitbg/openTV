@@ -26,7 +26,7 @@ test('normalización de nombres y acentos', () => {
 
 test('selecciona canales oficiales, incluida TV privada sin HLS, y descarta fuentes inseguras', () => {
   const parsed = parseCatalog(sample);
-  assert.deepEqual(parsed.map(c => c.id), ['la-1', '24h', 'antena-3', 'telecinco', 'telemadrid', 'canal-sur']);
+  assert.deepEqual(parsed.map(c => c.id), ['la-1', '24h', 'antena-3', 'telecinco', 'la-septima', 'telemadrid', 'canal-sur']);
   assert.deepEqual(parsed[0].streams, ['https://example.com/la1.m3u8']);
   assert.match(parsed[0].embedUrl, /secure-embed\.rtve\.es/);
   assert.equal(parsed[0].preferEmbed, true);
@@ -40,7 +40,10 @@ test('selecciona canales oficiales, incluida TV privada sin HLS, y descarta fuen
   assert.equal(parsed[3].streams.length, 0);
   assert.equal(parsed[3].website, 'https://www.telecinco.es/endirecto/');
   assert.equal(parsed[3].dynamicStream, true);
-  assert.equal(parsed[4].region, 'Madrid');
+  assert.equal(parsed[4].region, 'Nacional');
+  assert.equal(parsed[4].dynamicStream, true);
+  assert.equal(parsed[4].dynamicEmbed, true);
+  assert.equal(parsed[5].region, 'Madrid');
 });
 
 test('rechaza formatos de catálogo inesperados', () => {
@@ -76,10 +79,10 @@ test('mantiene la última versión correcta si falla la actualización', async (
   };
   const service = createCatalogService({ fetchImpl, now: () => time, ttlMs: 1000 });
   const first = await service.get();
-  assert.equal(first.channels.length, 7);
+  assert.equal(first.channels.length, 8);
   time = 2001;
   const second = await service.get();
-  assert.equal(second.channels.length, 7);
+  assert.equal(second.channels.length, 8);
   assert.equal(second.stale, true);
   assert.equal(calls, 2);
   await service.get();

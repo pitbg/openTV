@@ -110,6 +110,7 @@ http://192.168.1.15:55555/La%20Septima%20HD
   assert.equal(merged[0].region, 'Nacional');
   assert.equal(merged[0].logo, channelLogoFallback('la-septima'));
   assert.equal(merged[0].localStreamUrl, '/api/vbox/stream/la-septima');
+  assert.equal(merged[0].dynamicStream, true);
   assert.equal(merged[0].dynamicEmbed, true);
   assert.equal(merged[0].website, 'https://laseptima.com/la-septima-tv-directo/');
 });
