@@ -571,8 +571,12 @@ async function refreshEpg() {
     const data = await response.json();
     if (!data.channels || typeof data.channels !== 'object') throw new Error('Formato de EPG inválido');
     state.epg = data.channels;
-    const available = Object.entries(data.sources || {}).filter(([, source]) => source.cached).map(([id]) => id === 'vbox' ? 'VBox' : 'TDTChannels');
-    $('#guide-status').textContent = available.length ? `Programación: ${available.join(' + ')}` : 'Aún sin datos de programación';
+    const sourceNames = { vbox: 'VBox', tdtchannels: 'TDTChannels', epgshare: 'EPGSHARE01' };
+    const available = Object.entries(data.sources || {}).filter(([, source]) => source.cached).map(([id]) => sourceNames[id] || id);
+    const current = state.channels.filter(channel => Boolean(data.channels[channel.id]?.now)).length;
+    $('#guide-status').textContent = available.length
+      ? `Programación: ${available.join(' + ')} · ${current}/${state.channels.length} con datos actuales`
+      : 'Aún sin datos de programación';
   } catch (error) {
     console.warn('No se ha podido actualizar la EPG:', error);
     $('#guide-status').textContent = 'Guía temporalmente no disponible';

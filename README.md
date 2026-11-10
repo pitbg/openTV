@@ -136,15 +136,16 @@ No apliques el overlay al contenedor de producción hasta verificar la reproducc
 
 ### Clasificación de canales y guía de programación (EPG)
 
-El catálogo ya no separa todas las señales del VBox en un bloque «TDT local». **laSexta, Cuatro, FDF, Neox, Nova, Be Mad y otras cadenas nacionales** conservan su ámbito «Nacional» aunque únicamente se reciban desde el sintonizador; los canales de ámbito local aparecen en su región cuando se conoce. Las emisoras presentes en ambas fuentes se muestran una sola vez, con selector Online / TDT. Los logos HTTPS del listado del VBox se aprovechan cuando no existe uno del catálogo online.
+El catálogo ya no separa todas las señales del VBox en un bloque «TDT local». **laSexta, Cuatro, FDF, Neox, Nova, Be Mad y otras cadenas nacionales** conservan su ámbito «Nacional» aunque únicamente se reciban desde el sintonizador; los canales de ámbito local aparecen en su región cuando se conoce. Las emisoras presentes en ambas fuentes se muestran una sola vez, con selector Online / TDT. Los canales que carecen de logotipo disponen de alternativas HTTPS; se descartan las URLs obsoletas del antiguo repositorio `maincenter/Logotipos-TV`.
 
 La vista **«Guía TV»** muestra una parrilla horizontal al estilo de la guía tradicional: canales en una columna fija, horas en la cabecera, bloques que ocupan exactamente la duración de cada emisión y una línea vertical «AHORA». Se pueden explorar **seis horas** en la línea temporal, desplazarse horizontalmente y avanzar/retroceder una hora mediante botones. En esa vista, el **mismo reproductor** se reduce y permanece visible a un lado sin recrear el vídeo; al pulsar cualquier programa se sintoniza el canal y se vuelve automáticamente a la vista «Ver televisión» con el reproductor grande. Las tarjetas del catálogo y el panel del reproductor siguen mostrando «Ahora / Después» cuando hay datos disponibles.
 
 - **VBox:** `http://192.168.1.15:55555/vboxXmltv.xml` (derivado automáticamente de la URL IPTV configurada). Su EPG tiene prioridad para los canales que sintoniza; se consulta como máximo cada 15 minutos.
-- **TDTChannels:** guía XMLTV oficial comprimida en [`TV.xml.gz`](https://www.tdtchannels.com/epg/TV.xml.gz), para completar los canales online y las ausencias del VBox. Se descarga como máximo cada hora. Puedes desactivarla con `OPENTV_EPG_TDT_ENABLED=false` si quieres que todo sea estrictamente local.
-- **API:** `GET /api/epg` devuelve el programa actual y hasta 24 emisiones siguientes (cuando existen), junto al estado de ambas fuentes. Si falla temporalmente una descarga, el servidor conserva la última guía correcta. El navegador consulta el estado cada dos minutos para actualizar qué se está emitiendo y refresca la línea del horario mientras se visualiza la guía.
+- **TDTChannels:** guía XMLTV oficial comprimida en [`TV.xml.gz`](https://www.tdtchannels.com/epg/TV.xml.gz), para completar los canales online y las ausencias del VBox. Se descarga como máximo cada hora. Puedes desactivarla con `OPENTV_EPG_TDT_ENABLED=false`.
+- **EPGSHARE01:** guía pública española [`ES1.xml.gz`](https://epgshare01.online/epgshare01/epg_ripper_ES1.xml.gz), como tercer respaldo para cadenas ausentes de TDTChannels, especialmente Atresmedia (atreseries, laSexta, Neox, Nova, MEGA, etc.) y otras autonómicas. Se consulta como máximo cada seis horas, sin retransmitir vídeo. Se desactiva con `OPENTV_EPG_SHARE_ENABLED=false`.
+- **API:** `GET /api/epg` devuelve el programa actual y hasta 24 emisiones siguientes (cuando existen), junto al estado de las tres fuentes. Conserva la última guía correcta si una descarga falla. El navegador consulta el estado cada dos minutos y muestra cuántos canales tienen programación actual.
 
-Si el XMLTV del VBox no incluye programas, la guía seguirá utilizando TDTChannels cuando este tenga datos. Algunas cadenas pueden quedar sin EPG; openTV no inventa horarios ni programas. Puedes comprobar el contenido del VBox con `curl -fsS --max-time 8 'http://192.168.1.15:55555/vboxXmltv.xml' | head -c 500`.
+La prioridad es **VBox → TDTChannels → EPGSHARE01** por canal; las dos últimas fuentes solo rellenan ausencias. Para usar únicamente la programación local desactiva **ambas** fuentes externas. Algunas emisoras sin guía publicada (por ejemplo HIT TV o servicios eventuales de noticias) pueden continuar sin EPG; openTV no inventa horarios ni programas. Puedes comprobar el contenido del VBox con `curl -fsS --max-time 8 'http://192.168.1.15:55555/vboxXmltv.xml' | head -c 500`.
 
 ## Instalar en tu servidor con Docker
 
@@ -182,7 +183,8 @@ Si NPM y openTV comparten una red de Docker, puedes evitar publicar el puerto a 
 | `OPENTV_CONTAINER_NAME` | `opentv` | Nombre del contenedor; permite probar otra instancia sin colisiones |
 | `OPENTV_CATALOG_TTL_MS` | `21600000` | Tiempo de actualización del catálogo, en milisegundos (configurable en `compose.yml`) |
 | `OPENTV_VBOX_PLAYLIST_URL` | vacío | Lista IPTV del VBox; si está vacía, la integración TDT está desactivada |
-| `OPENTV_EPG_TDT_ENABLED` | `true` | Utiliza TDTChannels como complemento para la programación; `false` limita la guía al VBox |
+| `OPENTV_EPG_TDT_ENABLED` | `true` | Utiliza TDTChannels como complemento para la programación; `false` desactiva solo esta fuente |
+| `OPENTV_EPG_SHARE_ENABLED` | `true` | Añade la guía española EPGSHARE01 como tercer respaldo; `false` impide descargarla |
 | `OPENTV_VBOX_TRANSCODE_AUDIO` | `true` | Convierte audio de VBox a AAC usando FFmpeg; `false` retransmite el MPEG-TS original |
 | `OPENTV_VBOX_VIDEO_ENCODER` | `cpu` | `cpu` utiliza libx264; `vaapi` prefiere codificación Intel por hardware para el vídeo progresivo |
 | `OPENTV_VBOX_VAAPI_DEVICE` | `/dev/dri/renderD128` | Dispositivo DRM para FFmpeg, debe estar expuesto al contenedor |

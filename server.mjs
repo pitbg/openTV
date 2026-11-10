@@ -21,7 +21,8 @@ const catalog = createCatalogService({ ttlMs: ttl, ...(process.env.OPENTV_CATALO
 const vbox = createVBoxService({ playlistUrl: process.env.OPENTV_VBOX_PLAYLIST_URL });
 const epg = createEpgService({
   vboxPlaylistUrl: process.env.OPENTV_VBOX_PLAYLIST_URL,
-  ...(process.env.OPENTV_EPG_TDT_ENABLED === 'false' ? { externalUrl: null } : {})
+  ...(process.env.OPENTV_EPG_TDT_ENABLED === 'false' ? { externalUrl: null } : {}),
+  ...(process.env.OPENTV_EPG_SHARE_ENABLED === 'false' ? { epgshareUrl: null } : {})
 });
 const vboxTranscodeAudio = process.env.OPENTV_VBOX_TRANSCODE_AUDIO !== 'false' && process.env.OPENTV_VBOX_TRANSCODE_AUDIO !== '0';
 const vboxVideoEncoder = process.env.OPENTV_VBOX_VIDEO_ENCODER === 'vaapi' ? 'vaapi' : 'cpu';
