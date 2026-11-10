@@ -27,6 +27,9 @@ test('la API importa el VBox y retransmite una señal sin cambiar sus bytes', { 
     if (request.url === '/vboxSimpleIptv.m3u8') {
       response.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
       response.end(`#EXTM3U\n#EXTINF:-1,Telecinco HD\nhttp://127.0.0.1:${upstream.address().port}/Telecinco%20HD\n`);
+    } else if (request.url === '/vboxXmltv.xml') {
+      response.writeHead(200, { 'Content-Type': 'application/xml' });
+      response.end('<tv><channel id="Telecinco HD"><display-name>Telecinco HD</display-name></channel><programme channel="Telecinco HD" start="20200101000000 +0000" stop="20990101000000 +0000"><title>Guía TDT disponible</title></programme></tv>');
     } else if (request.url === '/Telecinco%20HD') {
       signalRequests++;
       response.writeHead(200, { 'Content-Type': 'video/mp2t' });
@@ -49,7 +52,7 @@ test('la API importa el VBox y retransmite una señal sin cambiar sus bytes', { 
       ...process.env, HOST: '127.0.0.1', PORT: String(appPort),
       OPENTV_CATALOG_URL: `http://127.0.0.1:${upstreamPort}/catalog.json`,
       OPENTV_VBOX_PLAYLIST_URL: `http://127.0.0.1:${upstreamPort}/vboxSimpleIptv.m3u8`,
-      OPENTV_VBOX_TRANSCODE_AUDIO: 'false'
+      OPENTV_VBOX_TRANSCODE_AUDIO: 'false', OPENTV_EPG_TDT_ENABLED: 'false'
     },
     stdio: 'ignore'
   });
@@ -71,6 +74,11 @@ test('la API importa el VBox y retransmite una señal sin cambiar sus bytes', { 
     const telecinco = channels.find(channel => channel.id === 'telecinco');
     assert.equal(telecinco.localStream, true);
     assert.equal(telecinco.localStreamUrl, '/api/vbox/stream/telecinco');
+
+    const guideResponse = await fetch(`http://127.0.0.1:${appPort}/api/epg`);
+    assert.equal(guideResponse.status, 200);
+    const guide = await guideResponse.json();
+    assert.equal(guide.channels.telecinco.now.title, 'Guía TDT disponible');
 
     const stream = await fetch(`http://127.0.0.1:${appPort}${telecinco.localStreamUrl}`);
     assert.equal(stream.status, 200);

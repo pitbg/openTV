@@ -63,6 +63,27 @@ http://192.168.1.15:55555/tdp%20HD
   assert.equal(merged.find(channel => channel.id === 'teledeporte').streams.length, 1);
 });
 
+test('clasifica los canales generalistas del VBox en el ámbito nacional y conserva las emisoras locales', () => {
+  const playlist = `#EXTM3U
+#EXTINF:-1 tvg-id="www.laSexta%20HD.co.un",laSexta HD
+http://192.168.1.15:55555/laSexta%20HD
+#EXTINF:-1,Cuatro HD
+http://192.168.1.15:55555/Cuatro%20HD
+#EXTINF:-1,FDF
+http://192.168.1.15:55555/FDF
+#EXTINF:-1,Dejate TV
+http://192.168.1.15:55555/Dejate%20TV
+`;
+  const parsed = parseVBoxPlaylist(playlist, playlistUrl);
+  assert.deepEqual(parsed.map(channel => channel.id), ['la-sexta', 'cuatro', 'fdf', 'dejate-tv']);
+  assert.equal(parsed[0].epgId, 'www.laSexta%20HD.co.un');
+  const merged = mergeVBoxChannels([{ id: 'la-1', name: 'La 1', region: 'Nacional', streams: [] }], parsed);
+  assert.deepEqual(merged.slice(0, 4).map(channel => channel.region), ['Nacional', 'Nacional', 'Nacional', 'Nacional']);
+  assert.equal(merged.find(channel => channel.id === 'la-sexta').name, 'laSexta');
+  assert.equal(merged.find(channel => channel.id === 'cuatro').broadcaster, 'Mediaset');
+  assert.equal(merged.find(channel => channel.id === 'dejate-tv').region, 'Madrid');
+});
+
 test('recarga la lista con caché y conserva la última copia si falla el VBox', async () => {
   let time = 100;
   let calls = 0;

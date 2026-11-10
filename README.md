@@ -134,7 +134,17 @@ No apliques el overlay al contenedor de producción hasta verificar la reproducc
 
 **Seguridad:** los canales TDT pasan por openTV y consumen ancho de banda del VBox y de tu servidor. Mantén openTV detrás de una red privada, acceso autenticado o Tailscale. Evita exponer el puerto `3080` directamente a Internet. No abras el puerto `55555` del VBox al exterior.
 
-La URL XMLTV del VBox (`http://192.168.1.15:55555/vboxXmltv.xml`) queda identificada para una siguiente mejora: incorporar «Ahora / Después» y la guía completa. La primera integración se centra en comprobar que el directo funciona.
+### Clasificación de canales y guía de programación (EPG)
+
+El catálogo ya no separa todas las señales del VBox en un bloque «TDT local». **laSexta, Cuatro, FDF, Neox, Nova, Be Mad y otras cadenas nacionales** conservan su ámbito «Nacional» aunque únicamente se reciban desde el sintonizador; los canales de ámbito local aparecen en su región cuando se conoce. Las emisoras presentes en ambas fuentes se muestran una sola vez, con selector Online / TDT. Los logos HTTPS del listado del VBox se aprovechan cuando no existe uno del catálogo online.
+
+La sección **«¿Qué están poniendo ahora?»** permite escoger canal por el programa en emisión y consultar su horario, progreso y siguiente programa. Las tarjetas de canales y el panel del reproductor también muestran «Ahora / Después» cuando hay datos disponibles.
+
+- **VBox:** `http://192.168.1.15:55555/vboxXmltv.xml` (derivado automáticamente de la URL IPTV configurada). Su EPG tiene prioridad para los canales que sintoniza; se consulta como máximo cada 15 minutos.
+- **TDTChannels:** guía XMLTV oficial comprimida en [`TV.xml.gz`](https://www.tdtchannels.com/epg/TV.xml.gz), para completar los canales online y las ausencias del VBox. Se descarga como máximo cada hora. Puedes desactivarla con `OPENTV_EPG_TDT_ENABLED=false` si quieres que todo sea estrictamente local.
+- **API:** `GET /api/epg` devuelve los programas actuales y siguientes, junto al estado de ambas fuentes. Si falla temporalmente una descarga, el servidor conserva la última guía correcta. El navegador consulta el estado cada dos minutos para actualizar qué se está emitiendo.
+
+Si el XMLTV del VBox no incluye programas, la guía seguirá utilizando TDTChannels cuando este tenga datos. Algunas cadenas pueden quedar sin EPG; openTV no inventa horarios ni programas. Puedes comprobar el contenido del VBox con `curl -fsS --max-time 8 'http://192.168.1.15:55555/vboxXmltv.xml' | head -c 500`.
 
 ## Instalar en tu servidor con Docker
 
@@ -172,6 +182,7 @@ Si NPM y openTV comparten una red de Docker, puedes evitar publicar el puerto a 
 | `OPENTV_CONTAINER_NAME` | `opentv` | Nombre del contenedor; permite probar otra instancia sin colisiones |
 | `OPENTV_CATALOG_TTL_MS` | `21600000` | Tiempo de actualización del catálogo, en milisegundos (configurable en `compose.yml`) |
 | `OPENTV_VBOX_PLAYLIST_URL` | vacío | Lista IPTV del VBox; si está vacía, la integración TDT está desactivada |
+| `OPENTV_EPG_TDT_ENABLED` | `true` | Utiliza TDTChannels como complemento para la programación; `false` limita la guía al VBox |
 | `OPENTV_VBOX_TRANSCODE_AUDIO` | `true` | Convierte audio de VBox a AAC usando FFmpeg; `false` retransmite el MPEG-TS original |
 | `OPENTV_VBOX_VIDEO_ENCODER` | `cpu` | `cpu` utiliza libx264; `vaapi` prefiere codificación Intel por hardware para el vídeo progresivo |
 | `OPENTV_VBOX_VAAPI_DEVICE` | `/dev/dri/renderD128` | Dispositivo DRM para FFmpeg, debe estar expuesto al contenedor |
@@ -202,13 +213,14 @@ npm test
 1. El backend consulta el JSON publicado por TDTChannels y escoge los canales incluidos en `lib/catalog.mjs`. Las excepciones editoriales (como Antena 3, que no figura en ese JSON) tienen su ficha y URL oficial incorporadas explícitamente.
 2. La API devuelve nombre, comunidad, logo, web oficial, reproductor incrustado oficial si existe y varias URLs HLS cuando están publicadas. Para Antena 3, `/api/streams/antena-3` consulta la API oficial; para Telecinco, `/api/streams/telecinco` consulta las fuentes de Caronte. Las URLs pueden caducar o no autorizar su reproducción externa.
 3. El navegador prefiere HLS o el reproductor oficial. Si se ha configurado un VBox, el servidor transmite por HTTP su señal MPEG-TS mediante `/api/vbox/stream/<canal>` para que `mpegts.js` la reproduzca bajo el mismo dominio; con la configuración habitual FFmpeg conserva el vídeo H.264 y convierte el audio a AAC. Una fuente local disponible también se ofrece como selección manual y como respaldo ante errores de HLS. No se accede a contenido con DRM, se simulan sesiones de usuario ni se evitan restricciones geográficas.
-4. Tus favoritos se guardan en `localStorage`. No hay base de datos ni seguimiento de usuarios.
+4. La EPG enlaza los nombres e identificadores XMLTV con los canales, prefiriendo la señal de la guía del VBox cuando dispone de programación y completando huecos desde TDTChannels. La guía es informativa y no afecta a la fuente de vídeo seleccionada.
+5. Tus favoritos se guardan en `localStorage`. No hay base de datos ni seguimiento de usuarios.
 
 ### Limitaciones y próximas mejoras
 
 - **Para diagnosticar Antena 3:** abre `http://IP:3080/api/streams/antena-3` en tu servidor. Si muestra `streams`, la resolución ha funcionado y cualquier error posterior suele estar en el acceso del navegador al HLS (CORS, origen o caducidad). Si muestra `error`, la respuesta describe el paso bloqueado. **Las URLs devueltas pueden incluir credenciales efímeras: no las compartas públicamente.**
 - **Para diagnosticar Telecinco:** abre `http://IP:3080/api/streams/telecinco`. Si devuelve `streams`, la API publica fuentes HLS, pero aún hay que comprobar su accesibilidad en el reproductor (el CDN podría exigir autorización adicional). Si devuelve `error`, no hay fuentes compatibles o no se pudo consultar la API.
-- Añadir guía de programación EPG (ahora/siguiente) tomando como base el XMLTV ya publicado por el VBox.
+- Ampliar la guía a una línea temporal navegable de varios días y mejorar los emparejamientos de canales con EPG ausente.
 - Mejorar el control con mando en Android TV y añadir PWA instalable.
 - Monitorizar de forma no intrusiva las fuentes y permitir configurar emisoras locales adicionales.
 

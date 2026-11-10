@@ -8,6 +8,7 @@ import { createCatalogService } from './lib/catalog.mjs';
 import { AtresplayerError, resolveAtresplayerHls } from './lib/atresplayer.mjs';
 import { MediasetError, resolveMediasetHls } from './lib/mediaset.mjs';
 import { createVBoxService, mergeVBoxChannels, VBoxError } from './lib/vbox.mjs';
+import { createEpgService } from './lib/epg.mjs';
 import { vboxFfmpegArgs } from './lib/ffmpeg-args.mjs';
 
 const root = resolve(fileURLToPath(new URL('./public/', import.meta.url)));
@@ -18,6 +19,10 @@ const host = process.env.HOST || '0.0.0.0';
 const ttl = Number(process.env.OPENTV_CATALOG_TTL_MS) || 21_600_000;
 const catalog = createCatalogService({ ttlMs: ttl, ...(process.env.OPENTV_CATALOG_URL ? { sourceUrl: process.env.OPENTV_CATALOG_URL } : {}) });
 const vbox = createVBoxService({ playlistUrl: process.env.OPENTV_VBOX_PLAYLIST_URL });
+const epg = createEpgService({
+  vboxPlaylistUrl: process.env.OPENTV_VBOX_PLAYLIST_URL,
+  ...(process.env.OPENTV_EPG_TDT_ENABLED === 'false' ? { externalUrl: null } : {})
+});
 const vboxTranscodeAudio = process.env.OPENTV_VBOX_TRANSCODE_AUDIO !== 'false' && process.env.OPENTV_VBOX_TRANSCODE_AUDIO !== '0';
 const vboxVideoEncoder = process.env.OPENTV_VBOX_VIDEO_ENCODER === 'vaapi' ? 'vaapi' : 'cpu';
 const vboxVaapiDevice = process.env.OPENTV_VBOX_VAAPI_DEVICE || '/dev/dri/renderD128';
@@ -40,6 +45,13 @@ const server = createServer(async (request, response) => {
     if (pathname === '/api/health') return reply(response, 200, { status: 'ok', count: channels.length, catalogAvailable: state.channels.length > 0, stale: state.stale, vbox: { enabled: local.enabled, connected: local.online, count: local.channels.length } });
     response.setHeader('Cache-Control', 'no-store');
     return reply(response, channels.length ? 200 : 503, { ...state, channels, vbox: { enabled: local.enabled, connected: local.online, count: local.channels.length } });
+  }
+
+  if (pathname === '/api/epg') {
+    response.setHeader('Cache-Control', 'no-store');
+    const [catalogue, local] = await Promise.all([catalog.get(), vbox.get()]);
+    const channels = mergeVBoxChannels(catalogue.channels, local.channels);
+    return reply(response, 200, await epg.get(channels, local.channels));
   }
 
   const vboxStream = /^\/api\/vbox\/stream\/([a-z0-9-]+)$/.exec(pathname);

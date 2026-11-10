@@ -10,8 +10,11 @@ const elements = {
 };
 
 const safeStored = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
-const state = { channels: [], activeId: safeStored('opentv-last-channel', null), favorites: new Set(safeStored('opentv-favorites', [])), filter: 'all', query: '', region: null, sourceMode: 'online', usedFallback: false, sourceIndex: 0, hls: null, mpegts: null, playbackAttempt: 0, started: false, embedAlternative: false };
+const state = { channels: [], activeId: safeStored('opentv-last-channel', null), favorites: new Set(safeStored('opentv-favorites', [])), filter: 'all', query: '', region: null, sourceMode: 'online', usedFallback: false, sourceIndex: 0, hls: null, mpegts: null, playbackAttempt: 0, started: false, embedAlternative: false, epg: {}, epgReady: false, epgLoading: false, guideExpanded: false };
 const activeChannel = () => state.channels.find(channel => channel.id === state.activeId);
+const guideTime = timestamp => new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' }).format(new Date(timestamp));
+const guideRange = programme => programme ? `${guideTime(programme.start)}–${guideTime(programme.stop)}` : '';
+const guideProgress = programme => programme ? Math.max(0, Math.min(100, 100 * (Date.now() - programme.start) / (programme.stop - programme.start))) : 0;
 
 function remember(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Almacenamiento bloqueado */ } }
 
@@ -107,6 +110,19 @@ function updateNowPlaying(channel) {
   updateSourceControls(channel);
   $('#retry-button').hidden = !channel.localStream && !channel.streams.length && !channel.embedUrl && !channel.dynamicStream;
   $('#error-embed-button').hidden = !channel.dynamicStream || !channel.embedUrl;
+  updateNowEpg(channel);
+}
+
+function updateNowEpg(channel) {
+  const guide = state.epg[channel.id];
+  const current = guide?.now;
+  $('#now-epg').hidden = !current;
+  if (!current) return;
+  $('#now-epg-title').textContent = current.title;
+  $('#now-epg-time').textContent = guideRange(current);
+  $('#now-epg-progress').style.width = `${guideProgress(current)}%`;
+  $('#next-epg-title').textContent = guide.next?.title || 'Aún sin información';
+  $('#next-epg-time').textContent = guideRange(guide.next);
 }
 
 function stopPlayback() {
@@ -325,13 +341,70 @@ function makeCard(channel) {
   header.append(favorite);
   const name = document.createElement('div'); name.className = 'card-name'; name.textContent = channel.name;
   const region = document.createElement('div'); region.className = 'card-region'; region.textContent = channel.region;
+  const guide = state.epg[channel.id];
+  const programme = guide?.now || guide?.next;
+  let guideDetails = null;
+  if (programme) {
+    guideDetails = document.createElement('div'); guideDetails.className = 'card-epg';
+    const label = document.createElement('span'); label.className = 'card-epg-label'; label.textContent = guide?.now ? 'AHORA EN EMISIÓN' : 'PRÓXIMAMENTE';
+    const title = document.createElement('strong'); title.className = 'card-epg-title'; title.textContent = programme.title; title.title = programme.title;
+    const time = document.createElement('small'); time.className = 'card-epg-time'; time.textContent = guideRange(programme);
+    guideDetails.append(label, title, time);
+    if (guide?.now) {
+      const progress = document.createElement('div'); progress.className = 'epg-progress';
+      const bar = document.createElement('span'); bar.style.width = `${guideProgress(programme)}%`;
+      progress.append(bar); guideDetails.append(progress);
+      if (guide.next) {
+        const next = document.createElement('span'); next.className = 'card-epg-next'; next.textContent = `Después: ${guide.next.title}`;
+        guideDetails.append(next);
+      }
+    }
+  }
   const foot = document.createElement('div'); foot.className = 'card-foot';
   const signal = document.createElement('span'); signal.className = channel.localStream || hasOnlineSource(channel) ? '' : 'not-embedded';
   const sourceLabel = channel.dynamicStream ? '● HLS DINÁMICO' : channel.preferEmbed && channel.embedUrl ? '● PLAYER OFICIAL' : channel.streams.length ? '● SEÑAL ONLINE' : channel.embedUrl ? '● PLAYER OFICIAL' : channel.localStream ? '● TDT LOCAL' : '↗ WEB OFICIAL';
   signal.textContent = hasOnlineSource(channel) && channel.localStream ? `${sourceLabel} · TDT` : sourceLabel;
   const arrow = document.createElement('span'); arrow.textContent = '↗';
-  foot.append(signal, arrow); card.append(header, name, region, foot);
+  foot.append(signal, arrow); card.append(header, name, region);
+  if (guideDetails) card.append(guideDetails);
+  card.append(foot);
   return card;
+}
+
+function makeGuideItem(channel) {
+  const guide = state.epg[channel.id];
+  const current = guide.now || guide.next;
+  const item = document.createElement('button');
+  item.type = 'button';
+  item.className = `guide-card${state.activeId === channel.id ? ' active' : ''}`;
+  item.title = `Ver ${channel.name} en directo`;
+  item.onclick = () => { selectChannel(channel, true); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  item.append(logoContent(channel, 'guide-logo'));
+  const details = document.createElement('span'); details.className = 'guide-details';
+  const name = document.createElement('span'); name.className = 'guide-name'; name.textContent = channel.name;
+  const title = document.createElement('strong'); title.className = 'guide-program'; title.textContent = current.title;
+  const time = document.createElement('span'); time.className = 'guide-schedule'; time.textContent = `${guide.now ? 'Ahora' : 'Próximamente'} · ${guideRange(current)}`;
+  details.append(name, title, time);
+  if (guide.now) {
+    const progress = document.createElement('span'); progress.className = 'epg-progress';
+    const bar = document.createElement('span'); bar.style.width = `${guideProgress(guide.now)}%`;
+    progress.append(bar); details.append(progress);
+  }
+  if (guide.next && guide.now) {
+    const next = document.createElement('span'); next.className = 'guide-next'; next.textContent = `Después: ${guide.next.title} · ${guideTime(guide.next.start)}`;
+    details.append(next);
+  }
+  item.append(details);
+  return item;
+}
+
+function renderGuide() {
+  const available = state.channels.filter(channel => matches(channel) && (state.epg[channel.id]?.now || state.epg[channel.id]?.next));
+  $('#guide-grid').replaceChildren(...(state.guideExpanded ? available : available.slice(0, 8)).map(makeGuideItem));
+  $('#guide-empty').hidden = !state.epgReady || available.length > 0;
+  const expand = $('#guide-expand');
+  expand.hidden = available.length <= 8;
+  expand.textContent = state.guideExpanded ? 'Ver menos programas' : `Ver todos los programas (${available.length})`;
 }
 
 function makeQueueItem(channel) {
@@ -360,6 +433,7 @@ function render() {
   elements.empty.hidden = filtered.length !== 0 || state.channels.length === 0;
   document.querySelectorAll('[data-filter]').forEach(button => button.classList.toggle('active', button.dataset.filter === state.filter && !state.region));
   document.querySelectorAll('[data-region]').forEach(button => button.classList.toggle('active', button.dataset.region === state.region));
+  renderGuide();
 }
 
 function changeFilter(filter, region = null) {
@@ -372,6 +446,7 @@ function changeFilter(filter, region = null) {
 document.querySelectorAll('[data-filter]').forEach(button => button.addEventListener('click', () => changeFilter(button.dataset.filter)));
 elements.search.addEventListener('input', () => { state.query = elements.search.value.trim(); render(); });
 $('#reset-filters').addEventListener('click', () => { elements.search.value = ''; state.query = ''; changeFilter('all'); });
+$('#guide-expand').addEventListener('click', () => { state.guideExpanded = !state.guideExpanded; renderGuide(); });
 document.addEventListener('keydown', event => {
   if (event.target.matches('input, textarea, select') || event.metaKey || event.ctrlKey || event.altKey) return;
   if (event.key === '/') { event.preventDefault(); elements.search.focus(); }
@@ -407,12 +482,36 @@ async function initialize() {
       : data.vbox?.enabled ? 'VBox sin conexión · canales online disponibles'
         : data.stale ? 'Catálogo en caché · actualización pendiente' : 'Catálogo actualizado automáticamente';
     render();
+    refreshEpg();
+    setInterval(refreshEpg, 120_000);
   } catch {
     elements.grid.replaceChildren();
     const message = document.createElement('div'); message.className = 'loading-card';
     message.textContent = 'No se pudo cargar el catálogo de canales. Comprueba que el servidor tenga acceso a Internet y recarga la página.';
     elements.grid.append(message);
     elements.status.textContent = 'No se pudo actualizar el catálogo';
+  }
+}
+
+async function refreshEpg() {
+  if (state.epgLoading) return;
+  state.epgLoading = true;
+  try {
+    const response = await fetch('/api/epg', { cache: 'no-store' });
+    if (!response.ok) throw new Error('La guía no está disponible');
+    const data = await response.json();
+    if (!data.channels || typeof data.channels !== 'object') throw new Error('Formato de EPG inválido');
+    state.epg = data.channels;
+    const available = Object.entries(data.sources || {}).filter(([, source]) => source.cached).map(([id]) => id === 'vbox' ? 'VBox' : 'TDTChannels');
+    $('#guide-status').textContent = available.length ? `Programación: ${available.join(' + ')}` : 'Aún sin datos de programación';
+  } catch (error) {
+    console.warn('No se ha podido actualizar la EPG:', error);
+    $('#guide-status').textContent = 'Guía temporalmente no disponible';
+  } finally {
+    state.epgReady = true;
+    state.epgLoading = false;
+    if (activeChannel()) updateNowEpg(activeChannel());
+    render();
   }
 }
 
