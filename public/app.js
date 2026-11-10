@@ -1,4 +1,5 @@
 import { canFallbackToLocal, defaultSource, hasOnlineSource } from './source-policy.js';
+import { TIMELINE_PIXELS_PER_MINUTE, timelinePosition, timelinePrograms, timelineRange, timelineTicks } from './guide-timeline.js';
 
 const $ = selector => document.querySelector(selector);
 const elements = {
@@ -10,7 +11,7 @@ const elements = {
 };
 
 const safeStored = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
-const state = { channels: [], activeId: safeStored('opentv-last-channel', null), favorites: new Set(safeStored('opentv-favorites', [])), filter: 'all', query: '', region: null, sourceMode: 'online', usedFallback: false, sourceIndex: 0, hls: null, mpegts: null, playbackAttempt: 0, started: false, embedAlternative: false, epg: {}, epgReady: false, epgLoading: false, guideExpanded: false };
+const state = { channels: [], activeId: safeStored('opentv-last-channel', null), favorites: new Set(safeStored('opentv-favorites', [])), filter: 'all', query: '', region: null, sourceMode: 'online', usedFallback: false, sourceIndex: 0, hls: null, mpegts: null, playbackAttempt: 0, started: false, embedAlternative: false, epg: {}, epgReady: false, epgLoading: false, viewMode: 'watch' };
 const activeChannel = () => state.channels.find(channel => channel.id === state.activeId);
 const guideTime = timestamp => new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' }).format(new Date(timestamp));
 const guideRange = programme => programme ? `${guideTime(programme.start)}–${guideTime(programme.stop)}` : '';
@@ -54,6 +55,22 @@ function selectChannel(channel, shouldPlay = false) {
   updateNowPlaying(channel);
   render();
   if (shouldPlay) playChannel();
+}
+
+function setViewMode(mode) {
+  const guide = mode === 'guide';
+  state.viewMode = guide ? 'guide' : 'watch';
+  $('#main-content').classList.toggle('guide-mode', guide);
+  $('#guide-section').hidden = !guide;
+  $('#catalog-section').hidden = guide;
+  for (const [name, selector] of [['watch', '#view-watch'], ['guide', '#view-guide']]) {
+    const button = $(selector);
+    const active = state.viewMode === name;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  }
+  if (guide) renderGuide();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function updateSourceControls(channel) {
@@ -371,40 +388,81 @@ function makeCard(channel) {
   return card;
 }
 
-function makeGuideItem(channel) {
-  const guide = state.epg[channel.id];
-  const current = guide.now || guide.next;
-  const item = document.createElement('button');
-  item.type = 'button';
-  item.className = `guide-card${state.activeId === channel.id ? ' active' : ''}`;
-  item.title = `Ver ${channel.name} en directo`;
-  item.onclick = () => { selectChannel(channel, true); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-  item.append(logoContent(channel, 'guide-logo'));
-  const details = document.createElement('span'); details.className = 'guide-details';
-  const name = document.createElement('span'); name.className = 'guide-name'; name.textContent = channel.name;
-  const title = document.createElement('strong'); title.className = 'guide-program'; title.textContent = current.title;
-  const time = document.createElement('span'); time.className = 'guide-schedule'; time.textContent = `${guide.now ? 'Ahora' : 'Próximamente'} · ${guideRange(current)}`;
-  details.append(name, title, time);
-  if (guide.now) {
-    const progress = document.createElement('span'); progress.className = 'epg-progress';
-    const bar = document.createElement('span'); bar.style.width = `${guideProgress(guide.now)}%`;
-    progress.append(bar); details.append(progress);
+function tuneFromGuide(channel) {
+  selectChannel(channel, true);
+  setViewMode('watch');
+}
+
+function makeTimelineRow(channel, range) {
+  const row = document.createElement('div');
+  row.className = `timeline-row${state.activeId === channel.id ? ' active' : ''}`;
+
+  const selector = document.createElement('button');
+  selector.type = 'button'; selector.className = 'timeline-channel';
+  selector.title = `Ver ${channel.name} en directo`;
+  selector.onclick = () => tuneFromGuide(channel);
+  selector.append(logoContent(channel, 'timeline-logo'));
+  const identity = document.createElement('span'); identity.className = 'timeline-channel-info';
+  const name = document.createElement('strong'); name.textContent = channel.name;
+  const region = document.createElement('small'); region.textContent = channel.region;
+  identity.append(name, region); selector.append(identity);
+
+  const track = document.createElement('div'); track.className = 'timeline-track';
+  track.style.width = `${range.width}px`;
+  const programmes = timelinePrograms(state.epg[channel.id], range);
+  for (const programme of programmes) {
+    const block = document.createElement('button');
+    block.type = 'button';
+    block.className = `timeline-program${programme.current ? ' is-current' : ''}`;
+    block.style.left = `${programme.left}px`;
+    block.style.width = `${Math.max(0, programme.width - 3)}px`;
+    block.title = `${channel.name} · ${programme.title} (${guideRange(programme)})`;
+    block.setAttribute('aria-label', `Ver ${channel.name}: ${programme.title}, ${guideRange(programme)}`);
+    block.onclick = () => tuneFromGuide(channel);
+    const title = document.createElement('strong'); title.textContent = programme.title;
+    const schedule = document.createElement('small'); schedule.textContent = guideRange(programme);
+    block.append(title, schedule); track.append(block);
   }
-  if (guide.next && guide.now) {
-    const next = document.createElement('span'); next.className = 'guide-next'; next.textContent = `Después: ${guide.next.title} · ${guideTime(guide.next.start)}`;
-    details.append(next);
+  if (!programmes.length) {
+    const unavailable = document.createElement('button');
+    unavailable.type = 'button'; unavailable.className = 'timeline-unavailable';
+    unavailable.textContent = state.epgReady ? 'Sin información de programación · Ver canal' : 'Consultando programación…';
+    unavailable.onclick = () => tuneFromGuide(channel);
+    track.append(unavailable);
   }
-  item.append(details);
-  return item;
+  const nowLine = document.createElement('span'); nowLine.className = 'timeline-now-line';
+  nowLine.style.left = `${timelinePosition(range.now, range)}px`;
+  track.append(nowLine);
+  row.append(selector, track);
+  return row;
 }
 
 function renderGuide() {
-  const available = state.channels.filter(channel => matches(channel) && (state.epg[channel.id]?.now || state.epg[channel.id]?.next));
-  $('#guide-grid').replaceChildren(...(state.guideExpanded ? available : available.slice(0, 8)).map(makeGuideItem));
-  $('#guide-empty').hidden = !state.epgReady || available.length > 0;
-  const expand = $('#guide-expand');
-  expand.hidden = available.length <= 8;
-  expand.textContent = state.guideExpanded ? 'Ver menos programas' : `Ver todos los programas (${available.length})`;
+  if (state.viewMode !== 'guide') return;
+  const scroller = $('#timeline-scroll');
+  const previousLeft = scroller.scrollLeft;
+  const previousTop = scroller.scrollTop;
+  const range = timelineRange();
+  const channels = state.channels.filter(matches);
+  const board = $('#timeline-board');
+  const header = document.createElement('div'); header.className = 'timeline-header';
+  const corner = document.createElement('span'); corner.className = 'timeline-corner'; corner.textContent = 'CANALES';
+  const times = document.createElement('div'); times.className = 'timeline-hours';
+  times.style.width = `${range.width}px`;
+  for (const tick of timelineTicks(range)) {
+    const mark = document.createElement('span'); mark.className = 'timeline-hour';
+    mark.style.left = `${tick.left}px`;
+    mark.textContent = guideTime(tick.time);
+    times.append(mark);
+  }
+  const now = document.createElement('span'); now.className = 'timeline-now-label';
+  now.style.left = `${timelinePosition(range.now, range)}px`;
+  now.textContent = 'AHORA'; times.append(now);
+  header.append(corner, times);
+  board.replaceChildren(header, ...channels.map(channel => makeTimelineRow(channel, range)));
+  $('#guide-empty').hidden = channels.length > 0 || !state.epgReady;
+  scroller.scrollLeft = previousLeft;
+  scroller.scrollTop = previousTop;
 }
 
 function makeQueueItem(channel) {
@@ -440,17 +498,21 @@ function changeFilter(filter, region = null) {
   state.filter = filter;
   state.region = region;
   render();
-  if (window.matchMedia('(max-width: 760px)').matches) $('.catalog-section').scrollIntoView({ behavior: 'smooth' });
+  if (window.matchMedia('(max-width: 760px)').matches) (state.viewMode === 'guide' ? $('#guide-section') : $('#catalog-section')).scrollIntoView({ behavior: 'smooth' });
 }
 
 document.querySelectorAll('[data-filter]').forEach(button => button.addEventListener('click', () => changeFilter(button.dataset.filter)));
 elements.search.addEventListener('input', () => { state.query = elements.search.value.trim(); render(); });
 $('#reset-filters').addEventListener('click', () => { elements.search.value = ''; state.query = ''; changeFilter('all'); });
-$('#guide-expand').addEventListener('click', () => { state.guideExpanded = !state.guideExpanded; renderGuide(); });
+$('#view-watch').addEventListener('click', () => setViewMode('watch'));
+$('#view-guide').addEventListener('click', () => setViewMode('guide'));
+$('#guide-now').addEventListener('click', () => { $('#timeline-scroll').scrollTo({ left: 0, behavior: 'smooth' }); });
+$('#guide-prev-time').addEventListener('click', () => { $('#timeline-scroll').scrollBy({ left: -60 * TIMELINE_PIXELS_PER_MINUTE, behavior: 'smooth' }); });
+$('#guide-next-time').addEventListener('click', () => { $('#timeline-scroll').scrollBy({ left: 60 * TIMELINE_PIXELS_PER_MINUTE, behavior: 'smooth' }); });
 document.addEventListener('keydown', event => {
   if (event.target.matches('input, textarea, select') || event.metaKey || event.ctrlKey || event.altKey) return;
   if (event.key === '/') { event.preventDefault(); elements.search.focus(); }
-  if ((event.key === 'ArrowRight' || event.key === 'ArrowLeft') && !event.target.closest('button, video')) {
+  if ((event.key === 'ArrowRight' || event.key === 'ArrowLeft') && !event.target.closest('button, video, .timeline-scroll')) {
     const at = state.channels.findIndex(c => c.id === state.activeId);
     if (at !== -1) {
       event.preventDefault();
@@ -484,6 +546,7 @@ async function initialize() {
     render();
     refreshEpg();
     setInterval(refreshEpg, 120_000);
+    setInterval(() => { if (state.viewMode === 'guide') renderGuide(); }, 60_000);
   } catch {
     elements.grid.replaceChildren();
     const message = document.createElement('div'); message.className = 'loading-card';
