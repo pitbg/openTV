@@ -4,7 +4,7 @@ import { prefersProgressiveTdt, shouldRetryProgressiveTdt } from './local-playba
 
 const $ = selector => document.querySelector(selector);
 const elements = {
-  grid: $('#channels-grid'), queue: $('#queue-items'), stage: $('#player-stage'), video: $('#video'), embed: $('#embedded-player'), embedActions: $('#embed-actions'),
+  grid: $('#channels-grid'), stage: $('#player-stage'), video: $('#video'), embed: $('#embedded-player'), embedActions: $('#embed-actions'),
   poster: $('#poster-screen'), error: $('#player-error'), loading: $('#player-loading'), play: $('#play-main'),
   current: $('#current-title'), subtitle: $('#current-subtitle'), posterTitle: $('#poster-channel'),
   currentLogo: $('#now-logo'), favorite: $('#favorite-current'), official: $('#official-link'),
@@ -12,7 +12,7 @@ const elements = {
 };
 
 const safeStored = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
-const state = { channels: [], activeId: safeStored('opentv-last-channel', null), favorites: new Set(safeStored('opentv-favorites', [])), filter: 'all', query: '', region: null, sourceMode: 'online', usedFallback: false, sourceIndex: 0, hls: null, mpegts: null, playbackAttempt: 0, started: false, embedAlternative: false, epg: {}, epgReady: false, epgLoading: false, viewMode: 'watch' };
+const state = { channels: [], activeId: safeStored('opentv-last-channel', null), favorites: new Set(safeStored('opentv-favorites', [])), filter: 'all', query: '', sourceMode: 'online', usedFallback: false, sourceIndex: 0, hls: null, mpegts: null, playbackAttempt: 0, started: false, embedAlternative: false, epg: {}, epgReady: false, epgLoading: false, viewMode: 'watch' };
 const activeChannel = () => state.channels.find(channel => channel.id === state.activeId);
 const guideTime = timestamp => new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' }).format(new Date(timestamp));
 const guideRange = programme => programme ? `${guideTime(programme.start)}–${guideTime(programme.stop)}` : '';
@@ -23,17 +23,30 @@ function remember(key, value) { try { localStorage.setItem(key, JSON.stringify(v
 function logoContent(channel, className) {
   const box = document.createElement('div');
   box.className = className;
-  box.textContent = channel.name.replace(/[^A-Za-z0-9À-ÿ]/g, '').slice(0, 3).toUpperCase();
+  const fallback = document.createElement('span');
+  fallback.className = 'logo-fallback';
+  fallback.textContent = channel.name.replace(/[^A-Za-z0-9À-ÿ]/g, '').slice(0, 3).toUpperCase();
+  box.append(fallback);
   const logos = [...new Set([channel.logo, channel.logoFallback].filter(Boolean))];
   if (logos.length) {
+    fallback.hidden = true;
     const image = document.createElement('img');
     image.alt = '';
     image.loading = 'lazy';
     image.referrerPolicy = 'no-referrer';
+    image.style.visibility = 'hidden';
     let index = 0;
+    image.onload = () => {
+      fallback.hidden = true;
+      image.style.visibility = 'visible';
+    };
     image.onerror = () => {
+      image.style.visibility = 'hidden';
       if (++index < logos.length) image.src = logos[index];
-      else image.remove();
+      else {
+        image.remove();
+        fallback.hidden = false;
+      }
     };
     image.src = logos[index];
     box.append(image);
@@ -90,7 +103,7 @@ function updateSourceControls(channel) {
   }
   const local = state.sourceMode === 'local';
   $('#quality-tag').textContent = local ? 'TDT LOCAL' : hasOnlineSource(channel) ? 'EN VIVO · ONLINE' : 'SOLO WEB';
-  $('#poster-subtitle').textContent = local ? 'Señal TDT desde tu sintonizador VBox' : hasOnlineSource(channel) ? `${channel.broadcaster} · Emisión online oficial` : 'Disponible a través de la web oficial';
+  $('#poster-subtitle').textContent = local ? 'Señal de tu antena TDT' : hasOnlineSource(channel) ? `${channel.broadcaster} · Emisión online oficial` : 'Disponible a través de la web oficial';
   elements.subtitle.textContent = `${channel.broadcaster} · ${channel.region}${state.usedFallback ? ' · Respaldo TDT activado' : ''}`;
 }
 
@@ -107,7 +120,7 @@ function chooseSource(mode) {
 
 function fallbackToLocal(channel, reason) {
   if (activeChannel()?.id !== channel.id || !canFallbackToLocal(channel, state.sourceMode)) return false;
-  console.warn(`No se ha podido reproducir la señal online de ${channel.name}; usando el VBox.`, reason);
+  console.warn(`No se ha podido reproducir la señal online de ${channel.name}; usando la TDT local.`, reason);
   state.sourceMode = 'local';
   state.usedFallback = true;
   updateSourceControls(channel);
@@ -228,7 +241,7 @@ async function playDynamicEmbedded(channel) {
 function playLocalStream(channel, convertVideo = prefersProgressiveTdt(navigator)) {
   stopPlayback();
   if (!window.mpegts?.getFeatureList()?.mseLivePlayback) {
-    showPlaybackError('Navegador no compatible con TDT local', 'Este navegador no puede reproducir la señal MPEG-TS del VBox. Prueba Firefox, Chrome o Safari actualizado.');
+    showPlaybackError('Navegador no compatible con TDT local', 'Este navegador no puede reproducir la señal MPEG-TS del sintonizador. Prueba Firefox, Chrome o Safari actualizado.');
     return;
   }
   const attempt = state.playbackAttempt;
@@ -249,14 +262,14 @@ function playLocalStream(channel, convertVideo = prefersProgressiveTdt(navigator
           playLocalStream(channel, true);
           return;
         }
-        showPlaybackError('No se ha podido reproducir la señal del VBox', `El reproductor ha indicado: ${detail || type || 'error desconocido'}. Comprueba el registro de la consola del navegador.`);
+        showPlaybackError('No se ha podido reproducir la señal TDT', `El reproductor ha indicado: ${detail || type || 'error desconocido'}. Comprueba el registro de la consola del navegador.`);
       }
     });
     player.attachMediaElement(elements.video);
     player.load();
     player.play().catch(() => { /* El navegador puede exigir pulsar Play. */ });
   } catch {
-    if (attempt === state.playbackAttempt) showPlaybackError('Error al iniciar la TDT', 'No se ha podido preparar la reproducción local del VBox.');
+    if (attempt === state.playbackAttempt) showPlaybackError('Error al iniciar la TDT', 'No se ha podido preparar la reproducción del sintonizador local.');
   }
 }
 
@@ -364,7 +377,6 @@ function matches(channel) {
   if (state.filter === 'favorites' && !state.favorites.has(channel.id)) return false;
   if (state.filter === 'national' && channel.region !== 'Nacional') return false;
   if (state.filter === 'regional' && channel.region === 'Nacional') return false;
-  if (state.region && channel.region !== state.region) return false;
   const term = state.query.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   return `${channel.name} ${channel.region} ${channel.broadcaster}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(term);
 }
@@ -388,34 +400,7 @@ function makeCard(channel) {
   favorite.onclick = event => { event.stopPropagation(); toggleFavorite(channel); };
   header.append(favorite);
   const name = document.createElement('div'); name.className = 'card-name'; name.textContent = channel.name;
-  const region = document.createElement('div'); region.className = 'card-region'; region.textContent = channel.region;
-  const guide = state.epg[channel.id];
-  const programme = guide?.now || guide?.next;
-  let guideDetails = null;
-  if (programme) {
-    guideDetails = document.createElement('div'); guideDetails.className = 'card-epg';
-    const label = document.createElement('span'); label.className = 'card-epg-label'; label.textContent = guide?.now ? 'AHORA EN EMISIÓN' : 'PRÓXIMAMENTE';
-    const title = document.createElement('strong'); title.className = 'card-epg-title'; title.textContent = programme.title; title.title = programme.title;
-    const time = document.createElement('small'); time.className = 'card-epg-time'; time.textContent = guideRange(programme);
-    guideDetails.append(label, title, time);
-    if (guide?.now) {
-      const progress = document.createElement('div'); progress.className = 'epg-progress';
-      const bar = document.createElement('span'); bar.style.width = `${guideProgress(programme)}%`;
-      progress.append(bar); guideDetails.append(progress);
-      if (guide.next) {
-        const next = document.createElement('span'); next.className = 'card-epg-next'; next.textContent = `Después: ${guide.next.title}`;
-        guideDetails.append(next);
-      }
-    }
-  }
-  const foot = document.createElement('div'); foot.className = 'card-foot';
-  const signal = document.createElement('span'); signal.className = channel.localStream || hasOnlineSource(channel) ? '' : 'not-embedded';
-  const sourceLabel = channel.dynamicStream ? '● HLS DINÁMICO' : channel.dynamicEmbed ? '● PLAYER OFICIAL' : channel.preferEmbed && channel.embedUrl ? '● PLAYER OFICIAL' : channel.streams.length ? '● SEÑAL ONLINE' : channel.embedUrl ? '● PLAYER OFICIAL' : channel.localStream ? '● TDT LOCAL' : '↗ WEB OFICIAL';
-  signal.textContent = hasOnlineSource(channel) && channel.localStream ? `${sourceLabel} · TDT` : sourceLabel;
-  const arrow = document.createElement('span'); arrow.textContent = '↗';
-  foot.append(signal, arrow); card.append(header, name, region);
-  if (guideDetails) card.append(guideDetails);
-  card.append(foot);
+  card.append(header, name);
   return card;
 }
 
@@ -496,38 +481,16 @@ function renderGuide() {
   scroller.scrollTop = previousTop;
 }
 
-function makeQueueItem(channel) {
-  const item = document.createElement('button');
-  item.className = `queue-item${state.activeId === channel.id ? ' active' : ''}`;
-  item.onclick = () => selectChannel(channel, true);
-  item.append(logoContent(channel, 'queue-logo'));
-  const text = document.createElement('span'); text.className = 'queue-text';
-  const name = document.createElement('strong'); name.textContent = channel.name;
-  const meta = document.createElement('small'); meta.textContent = channel.region;
-  text.append(name, meta);
-  const arrow = document.createElement('span'); arrow.className = 'queue-arrow'; arrow.textContent = state.activeId === channel.id ? '▶' : '›';
-  item.append(text, arrow);
-  return item;
-}
-
 function render() {
   const filtered = state.channels.filter(matches);
   elements.grid.replaceChildren(...filtered.map(makeCard));
-  const queue = state.channels.slice(0, 18);
-  elements.queue.replaceChildren(...queue.map(makeQueueItem));
-  $('#queue-counter').textContent = `${queue.length} CANALES`;
-  $('#channel-count').textContent = `${filtered.length} / ${state.channels.length}`;
-  $('#side-count').textContent = state.channels.length;
-  $('#favorites-count').textContent = state.favorites.size;
   elements.empty.hidden = filtered.length !== 0 || state.channels.length === 0;
-  document.querySelectorAll('[data-filter]').forEach(button => button.classList.toggle('active', button.dataset.filter === state.filter && !state.region));
-  document.querySelectorAll('[data-region]').forEach(button => button.classList.toggle('active', button.dataset.region === state.region));
+  document.querySelectorAll('[data-filter]').forEach(button => button.classList.toggle('active', button.dataset.filter === state.filter));
   renderGuide();
 }
 
-function changeFilter(filter, region = null) {
+function changeFilter(filter) {
   state.filter = filter;
-  state.region = region;
   render();
   if (window.matchMedia('(max-width: 760px)').matches) (state.viewMode === 'guide' ? $('#guide-section') : $('#catalog-section')).scrollIntoView({ behavior: 'smooth' });
 }
@@ -559,21 +522,10 @@ async function initialize() {
     if (!response.ok) throw new Error('El servicio de canales no está disponible');
     const data = await response.json();
     state.channels = data.channels;
-    const regions = [...new Set(state.channels.map(c => c.region).filter(r => r !== 'Nacional'))];
-    const container = $('#region-links');
-    for (const region of regions) {
-      const button = document.createElement('button');
-      button.className = 'region-link'; button.dataset.region = region; button.textContent = region;
-      button.onclick = () => changeFilter('all', region);
-      container.append(button);
-    }
     if (!state.channels.some(c => c.id === state.activeId)) state.activeId = state.channels[0]?.id || null;
     state.sourceMode = defaultSource(activeChannel());
     if (activeChannel()) updateNowPlaying(activeChannel());
-    elements.status.textContent = data.vbox?.connected
-      ? `VBox conectado · ${data.vbox.count} canales locales`
-      : data.vbox?.enabled ? 'VBox sin conexión · canales online disponibles'
-        : data.stale ? 'Catálogo en caché · actualización pendiente' : 'Catálogo actualizado automáticamente';
+    elements.status.textContent = data.stale ? 'Catálogo en caché · actualización pendiente' : 'Canales actualizados';
     render();
     refreshEpg();
     setInterval(refreshEpg, 120_000);
@@ -596,12 +548,8 @@ async function refreshEpg() {
     const data = await response.json();
     if (!data.channels || typeof data.channels !== 'object') throw new Error('Formato de EPG inválido');
     state.epg = data.channels;
-    const sourceNames = { vbox: 'VBox', tdtchannels: 'TDTChannels', epgshare: 'EPGSHARE01', atresmedia: 'Atresmedia' };
-    const available = Object.entries(data.sources || {}).filter(([, source]) => source.cached).map(([id]) => sourceNames[id] || id);
-    const current = state.channels.filter(channel => Boolean(data.channels[channel.id]?.now)).length;
-    $('#guide-status').textContent = available.length
-      ? `Programación: ${available.join(' + ')} · ${current}/${state.channels.length} con datos actuales`
-      : 'Aún sin datos de programación';
+    const available = Object.values(data.sources || {}).some(source => source.cached);
+    $('#guide-status').textContent = available ? 'Programación actualizada' : 'Aún sin datos de programación';
   } catch (error) {
     console.warn('No se ha podido actualizar la EPG:', error);
     $('#guide-status').textContent = 'Guía temporalmente no disponible';

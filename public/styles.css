@@ -131,3 +131,57 @@ main.guide-mode .icon-button{width:31px;height:31px}
   main.guide-mode .watch-section{width:100%;max-width:100%}
   .timeline-scroll{width:100%;max-width:100%}
 }
+
+/* Diseño compacto: una columna principal y tarjetas dedicadas a elegir canal.
+   La programación detallada permanece en la Guía TV. */
+.sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.app-shell{display:block;min-height:100vh}
+.topbar{min-height:76px;padding:16px clamp(16px,3vw,48px);gap:16px}
+.topbar .brand{padding:0;font-size:27px;white-space:nowrap}
+.topbar-actions{width:auto;margin-left:auto}
+.search-box{width:clamp(180px,25vw,280px)}
+main{padding:25px clamp(16px,3vw,48px) 56px;max-width:1450px}
+.view-controls{margin-bottom:26px}
+.view-button{padding:10px 17px}
+.watch-section{min-width:0}
+main:not(.guide-mode) .watch-section{max-width:1000px;margin-inline:auto}
+.watch-layout{display:block}
+.watch-section .section-header h2{font-size:19px;margin:0}
+.watch-section .section-header{align-items:center;margin-bottom:14px}
+.catalog-section{margin-top:42px}
+.catalog-heading{margin-bottom:15px}
+.catalog-heading h2{font-size:21px;margin:0}
+.filter-pills{margin-bottom:18px}
+.channels-grid{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:11px}
+.channel-card{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:145px;padding:18px 12px 14px;background:#151b28}
+.channel-card.active{background:#1d2c25;box-shadow:inset 0 0 0 1px #a6e97c55}
+.card-header{width:100%;display:flex;justify-content:center;align-items:center;position:relative}
+.card-logo{width:75px;height:75px;background:transparent;color:#d4f9b6;padding:0;border-radius:8px}
+.card-logo,.now-logo,.timeline-logo{position:relative}
+.card-logo img,.now-logo img,.timeline-logo img{position:absolute;inset:0}
+.card-logo img{padding:2px}
+.card-favorite{position:absolute;top:-10px;right:-4px;font-size:20px;padding:7px;line-height:1;z-index:1}
+.card-name{font-size:12px;text-align:center;margin:12px 0 0;max-width:100%;line-height:1.3}
+.logo-fallback{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+main.guide-mode .watch-layout{display:block}
+main.guide-mode .watch-section{margin:0}
+footer{padding-inline:clamp(16px,3vw,48px)}
+@media(max-width:760px){
+  .app-shell{display:block}
+  .topbar{padding:13px 16px;min-height:64px;flex-wrap:nowrap}
+  .topbar .brand{font-size:24px}
+  .topbar .brand-mark{width:26px;height:24px;border-radius:8px;margin-right:7px}
+  .topbar .brand-mark span{border-left-width:8px;border-top-width:5px;border-bottom-width:5px}
+  .topbar-actions{order:initial;width:auto;margin-left:auto}
+  .search-box{width:clamp(130px,42vw,220px);height:38px}
+  main{padding:20px 16px 40px}
+  .view-controls{margin-bottom:19px}
+  .watch-section .section-header h2{font-size:18px}
+  .catalog-section{margin-top:30px}
+  .catalog-heading h2{font-size:20px}
+  .channels-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .channel-card{min-height:135px;padding:14px 10px}
+  .card-logo{width:70px;height:70px}
+  .card-name{margin-top:9px}
+  .card-favorite{top:-8px;right:-3px}
+}
