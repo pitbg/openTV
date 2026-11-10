@@ -29,7 +29,7 @@ test('selecciona canales oficiales, incluida TV privada sin HLS, y descarta fuen
   assert.deepEqual(parsed.map(c => c.id), ['la-1', '24h', 'antena-3', 'telecinco', 'telemadrid', 'canal-sur']);
   assert.deepEqual(parsed[0].streams, ['https://example.com/la1.m3u8']);
   assert.match(parsed[0].embedUrl, /secure-embed\.rtve\.es/);
-  assert.equal(parsed[0].preferEmbed, true);
+  assert.equal(parsed[0].preferEmbed, false); // HLS primero; el iframe queda como respaldo.
   assert.equal(parsed[0].restricted, true);
   assert.equal(parsed[1].streams.length, 0);
   assert.match(parsed[2].embedUrl, /embed\/live\/antena3\//);

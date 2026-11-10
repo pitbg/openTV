@@ -337,6 +337,7 @@ async function playStream(index = state.sourceIndex) {
     hls.loadSource(url);
     hls.attachMedia(elements.video);
   } else {
+    if (channel.embedUrl && !channel.dynamicStream) return playEmbedded();
     if (fallbackToLocal(channel, 'El navegador no admite HLS')) return;
     showPlaybackError('Navegador no compatible', 'Este navegador no admite la reproducción HLS. Utiliza una versión reciente o abre la emisión oficial.');
   }
