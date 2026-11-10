@@ -7,39 +7,23 @@
   <meta name="description" content="openTV: la televisión española, en directo y en un solo lugar." />
   <title>openTV — Televisión online en directo</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css?v=20261110-ticker" />
   <script src="/vendor/hls.min.js" defer></script>
-  <script type="module" src="/app.js"></script>
+  <script src="/vendor/mpegts.js" defer></script>
+  <script type="module" src="/app.js?v=20261110-ticker"></script>
 </head>
 <body>
   <div class="app-shell">
-    <aside class="sidebar" aria-label="Navegación de canales">
-      <a class="brand" href="/" aria-label="openTV, inicio"><span class="brand-mark"><span></span></span><span>open<span class="brand-accent">TV</span></span><span class="brand-dot">.</span></a>
-      <p class="sidebar-eyebrow">TU TELEVISIÓN, A TU MANERA</p>
-      <div class="sidebar-group">
-        <p class="nav-label">EXPLORAR</p>
-        <button class="side-link active" data-filter="all"><span class="nav-symbol">◫</span> Todos los canales <span class="side-count" id="side-count">—</span></button>
-        <button class="side-link" data-filter="national"><span class="nav-symbol">◎</span> Nacionales</button>
-        <button class="side-link" data-filter="regional"><span class="nav-symbol">▦</span> Autonómicos</button>
-        <button class="side-link" data-filter="favorites"><span class="nav-symbol gold">★</span> Mis favoritos <span class="side-count" id="favorites-count">0</span></button>
-      </div>
-      <div class="sidebar-group regions-group">
-        <p class="nav-label">POR COMUNIDAD</p>
-        <div id="region-links" class="region-links"></div>
-      </div>
-      <div class="sidebar-bottom"><span class="source-led"></span><span>Emisiones oficiales<br><small>Enlaces a las cadenas</small></span></div>
-    </aside>
-
     <div class="main-column">
       <header class="topbar">
-        <div class="mobile-brand"><span class="brand-mark"><span></span></span>open<span>TV</span><b>.</b></div>
-        <div class="topbar-heading"><span class="topbar-kicker">BIENVENIDO A openTV</span><h1>La tele, <em>sin complicaciones.</em></h1></div>
-        <div class="topbar-actions"><label class="search-box" for="search-input"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg><input id="search-input" type="search" placeholder="Buscar canal..." autocomplete="off" /><kbd>/</kbd></label><span class="topbar-live"><span></span> EN DIRECTO</span></div>
+        <a class="brand" href="/" aria-label="openTV, inicio"><span class="brand-mark"><span></span></span><span>open<span class="brand-accent">TV</span></span><span class="brand-dot">.</span></a>
+        <div class="topbar-actions"><label class="search-box" for="search-input"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg><input id="search-input" type="search" placeholder="Buscar canal..." autocomplete="off" /><kbd>/</kbd></label></div>
       </header>
 
-      <main>
+      <main id="main-content">
+        <nav class="view-controls" aria-label="Vista de televisión"><button id="view-watch" class="view-button active" type="button" aria-pressed="true">▶ Ver televisión</button><button id="view-guide" class="view-button" type="button" aria-pressed="false">▦ Guía TV</button></nav>
         <section class="watch-section" aria-labelledby="watch-heading">
-          <div class="section-header"><div><span class="eyebrow"><span class="pulse-dot"></span> AHORA EN DIRECTO</span><h2 id="watch-heading">Tu pantalla</h2></div><button class="text-button" id="fullscreen-button" title="Pantalla completa" aria-label="Pantalla completa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg><span>Pantalla completa</span></button></div>
+          <div class="section-header"><h2 id="watch-heading">En directo</h2><button class="text-button" id="fullscreen-button" title="Pantalla completa" aria-label="Pantalla completa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg><span>Pantalla completa</span></button></div>
           <div class="watch-layout">
             <div class="player-and-info">
               <div class="player-stage" id="player-stage">
@@ -52,12 +36,15 @@
                 <span class="player-live-tag"><span></span> DIRECTO</span>
               </div>
               <div class="now-playing"><div class="now-logo" id="now-logo">TV</div><div class="now-details"><span class="eyebrow">ESTÁS VIENDO</span><div class="now-title-row"><h3 id="current-title">Selecciona un canal</h3><span class="quality-tag" id="quality-tag">EN VIVO</span></div><p id="current-subtitle">Una selección de televisiones públicas</p></div><div class="now-actions"><button id="favorite-current" class="icon-button" title="Añadir a favoritos" aria-label="Añadir a favoritos">☆</button><a id="official-link" class="icon-button" title="Abrir web oficial" aria-label="Abrir web oficial" target="_blank" rel="noopener noreferrer">↗</a></div></div>
+              <div class="now-epg" id="now-epg" hidden><div class="now-epg-slot"><span>AHORA EN EMISIÓN</span><strong id="now-epg-title"></strong><small id="now-epg-time"></small><div class="epg-progress"><span id="now-epg-progress"></span></div></div><div class="now-epg-slot"><span>A CONTINUACIÓN</span><strong id="next-epg-title"></strong><small id="next-epg-time"></small></div></div>
+              <div class="source-options" id="source-options" role="group" aria-label="Elegir señal del canal" hidden><span class="source-options-label">FUENTE DE VÍDEO</span><button id="source-online" type="button" class="source-option" aria-pressed="true">Online</button><button id="source-local" type="button" class="source-option" aria-pressed="false">TDT local</button></div>
             </div>
-            <div class="queue-panel"><div class="queue-header"><div><span class="eyebrow">CAMBIA DE CANAL</span><h3>A un clic</h3></div><span class="queue-counter" id="queue-counter">—</span></div><div class="queue-items" id="queue-items"><div class="queue-loading">Cargando canales…</div></div><div class="queue-foot">SIN ANTENA · FUENTES OFICIALES</div></div>
           </div>
         </section>
 
-        <section class="catalog-section" aria-labelledby="catalog-heading"><div class="section-header catalog-heading"><div><span class="eyebrow">DESCUBRE</span><h2 id="catalog-heading">Explora los canales <span class="muted-title" id="channel-count"></span></h2></div><p id="catalog-status">Actualizando catálogo…</p></div><div class="filter-pills" id="filter-pills" aria-label="Filtros de canales"><button class="pill active" data-filter="all">Todos</button><button class="pill" data-filter="national">Nacionales</button><button class="pill" data-filter="regional">Autonómicos</button><button class="pill" data-filter="favorites">★ Favoritos</button></div><div class="channels-grid" id="channels-grid"><div class="loading-card">Buscando emisiones oficiales…</div></div><div class="empty-state" id="empty-state" hidden><strong>No encontramos canales</strong><p>Prueba otra búsqueda o cambia el filtro.</p><button id="reset-filters" class="secondary-button">Mostrar todos</button></div></section>
+        <section class="guide-section" id="guide-section" aria-labelledby="guide-heading" hidden><div class="section-header guide-heading"><div><span class="eyebrow"><span class="pulse-dot"></span> GUÍA DE PROGRAMACIÓN</span><h2 id="guide-heading">La programación, hora a hora</h2></div><div class="guide-controls"><span id="guide-status" class="guide-status" role="status" aria-live="polite">Consultando programación…</span><div class="guide-time-controls"><button id="guide-prev-time" class="secondary-button guide-now" type="button" aria-label="Retroceder una hora">← 1 h</button><button id="guide-now" class="secondary-button guide-now" type="button">● Ahora</button><button id="guide-next-time" class="secondary-button guide-now" type="button" aria-label="Avanzar una hora">1 h →</button></div></div></div><div class="timeline-scroll" id="timeline-scroll" role="region" aria-label="Guía de programación por canal y horario" tabindex="0"><div class="timeline-board" id="timeline-board"></div></div><p class="guide-footnote">Desplázate horizontalmente por las horas. Selecciona un programa para verlo en el reproductor grande.</p><div class="guide-empty" id="guide-empty" hidden>No encontramos canales con los filtros actuales.</div></section>
+
+        <section class="catalog-section" id="catalog-section" aria-labelledby="catalog-heading"><div class="section-header catalog-heading"><h2 id="catalog-heading">Canales</h2><p id="catalog-status" class="sr-only" role="status">Actualizando catálogo…</p></div><div class="filter-pills" id="filter-pills" aria-label="Filtros de canales"><button class="pill active" data-filter="all">Todos</button><button class="pill" data-filter="national">Nacionales</button><button class="pill" data-filter="regional">Autonómicos</button><button class="pill" data-filter="favorites">★ Favoritos</button></div><div class="channels-grid" id="channels-grid"><div class="loading-card">Buscando emisiones oficiales…</div></div><div class="empty-state" id="empty-state" hidden><strong>No encontramos canales</strong><p>Prueba otra búsqueda o cambia el filtro.</p><button id="reset-filters" class="secondary-button">Mostrar todos</button></div></section>
       </main>
       <footer><div><strong>open<span>TV</span></strong> · Hecho para disfrutar de la televisión en directo.</div><div>Fuentes: <a href="https://www.tdtchannels.com/" target="_blank" rel="noopener noreferrer">TDTChannels ↗</a> · Las señales pertenecen a sus respectivas cadenas.</div></footer>
     </div>

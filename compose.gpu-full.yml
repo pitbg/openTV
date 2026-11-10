@@ -1,0 +1,6 @@
+# Overlay experimental sobre compose.yml + compose.gpu.yml.
+# UHD 630: i965 expone VideoProc para decodificar, desentrelazar y escalar por GPU.
+services:
+  opentv:
+    environment:
+      OPENTV_VBOX_VAAPI_PIPELINE: full

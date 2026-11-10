@@ -29,7 +29,7 @@ test('selecciona canales oficiales, incluida TV privada sin HLS, y descarta fuen
   assert.deepEqual(parsed.map(c => c.id), ['la-1', '24h', 'antena-3', 'telecinco', 'telemadrid', 'canal-sur']);
   assert.deepEqual(parsed[0].streams, ['https://example.com/la1.m3u8']);
   assert.match(parsed[0].embedUrl, /secure-embed\.rtve\.es/);
-  assert.equal(parsed[0].preferEmbed, true);
+  assert.equal(parsed[0].preferEmbed, false); // HLS primero; el iframe queda como respaldo.
   assert.equal(parsed[0].restricted, true);
   assert.equal(parsed[1].streams.length, 0);
   assert.match(parsed[2].embedUrl, /embed\/live\/antena3\//);
@@ -46,6 +46,21 @@ test('selecciona canales oficiales, incluida TV privada sin HLS, y descarta fuen
 test('rechaza formatos de catálogo inesperados', () => {
   assert.throws(() => parseCatalog({}), /formato/i);
   assert.throws(() => parseCatalog({ countries: [{ name: 'France' }] }), /España/);
+});
+
+test('integra La Séptima como canal nacional con su ficha oficial y sin inventar HLS', () => {
+  const fixture = structuredClone(sample);
+  fixture.countries[0].ambits[0].channels.push({
+    name: 'La Séptima', logo: 'https://pbs.twimg.com/profile_images/2074450480743297024/UTvLXCSQ_200x200.jpg',
+    web: 'https://laseptima.com/la-septima-tv-directo/',
+    options: [{ format: 'youtube', url: 'https://www.youtube.com/channel/example/live' }]
+  });
+  const channel = parseCatalog(fixture).find(item => item.id === 'la-septima');
+  assert.equal(channel.name, 'La Séptima');
+  assert.equal(channel.region, 'Nacional');
+  assert.equal(channel.website, 'https://laseptima.com/la-septima-tv-directo/');
+  assert.equal(channel.streams.length, 0);
+  assert.equal(channel.dynamicEmbed, true);
 });
 
 test('mantiene la última versión correcta si falla la actualización', async () => {
