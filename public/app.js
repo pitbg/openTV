@@ -131,7 +131,7 @@ function updateNowPlaying(channel) {
     else link.removeAttribute('href');
   }
   updateSourceControls(channel);
-  $('#retry-button').hidden = !channel.localStream && !channel.streams.length && !channel.embedUrl && !channel.dynamicStream;
+  $('#retry-button').hidden = !channel.localStream && !channel.streams.length && !channel.embedUrl && !channel.dynamicStream && !channel.dynamicEmbed;
   $('#error-embed-button').hidden = !channel.dynamicStream || !channel.embedUrl;
   updateNowEpg(channel);
 }
@@ -196,9 +196,33 @@ function playChannel() {
   const channel = activeChannel();
   if (!channel) return;
   if (state.sourceMode === 'local' && channel.localStream) return playLocalStream(channel);
+  if (channel.dynamicEmbed) return playDynamicEmbedded(channel);
   if (channel.dynamicStream) return playDynamicStream(channel);
   if (channel.embedUrl && (channel.preferEmbed || !channel.streams.length)) playEmbedded();
   else playStream(0);
+}
+
+async function playDynamicEmbedded(channel) {
+  stopPlayback();
+  const attempt = state.playbackAttempt;
+  elements.poster.hidden = true;
+  elements.loading.hidden = false;
+  $('#loading-provider').textContent = `Abriendo el directo oficial de ${channel.name}`;
+  try {
+    const response = await fetch(`/api/embeds/${encodeURIComponent(channel.id)}`, { cache: 'no-store' });
+    const body = await response.json();
+    if (attempt !== state.playbackAttempt || activeChannel()?.id !== channel.id || state.sourceMode !== 'online') return;
+    if (!response.ok || typeof body.embedUrl !== 'string' ||
+        !/^https:\/\/www\.youtube\.com\/embed\/[a-zA-Z0-9_-]{11}\?/.test(body.embedUrl)) {
+      throw new Error(body.error || 'La señal oficial no está disponible.');
+    }
+    channel.embedUrl = body.embedUrl;
+    playEmbedded();
+  } catch (error) {
+    if (attempt !== state.playbackAttempt || activeChannel()?.id !== channel.id || state.sourceMode !== 'online') return;
+    if (fallbackToLocal(channel, error.message)) return;
+    showPlaybackError(`No se ha podido abrir ${channel.name}`, `${error.message} Puedes verla en la web oficial.`);
+  }
 }
 
 function playLocalStream(channel, convertVideo = prefersProgressiveTdt(navigator)) {
@@ -385,7 +409,7 @@ function makeCard(channel) {
   }
   const foot = document.createElement('div'); foot.className = 'card-foot';
   const signal = document.createElement('span'); signal.className = channel.localStream || hasOnlineSource(channel) ? '' : 'not-embedded';
-  const sourceLabel = channel.dynamicStream ? '● HLS DINÁMICO' : channel.preferEmbed && channel.embedUrl ? '● PLAYER OFICIAL' : channel.streams.length ? '● SEÑAL ONLINE' : channel.embedUrl ? '● PLAYER OFICIAL' : channel.localStream ? '● TDT LOCAL' : '↗ WEB OFICIAL';
+  const sourceLabel = channel.dynamicStream ? '● HLS DINÁMICO' : channel.dynamicEmbed ? '● PLAYER OFICIAL' : channel.preferEmbed && channel.embedUrl ? '● PLAYER OFICIAL' : channel.streams.length ? '● SEÑAL ONLINE' : channel.embedUrl ? '● PLAYER OFICIAL' : channel.localStream ? '● TDT LOCAL' : '↗ WEB OFICIAL';
   signal.textContent = hasOnlineSource(channel) && channel.localStream ? `${sourceLabel} · TDT` : sourceLabel;
   const arrow = document.createElement('span'); arrow.textContent = '↗';
   foot.append(signal, arrow); card.append(header, name, region);

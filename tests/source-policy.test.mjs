@@ -6,6 +6,7 @@ test('prioriza la señal online sobre el VBox cuando ambas existen', () => {
   for (const channel of [
     { streams: ['https://example.com/stream.m3u8'], localStream: true },
     { dynamicStream: true, streams: [], localStream: true },
+    { dynamicEmbed: true, streams: [], localStream: true },
     { embedUrl: 'https://example.com/embed', streams: [], localStream: true }
   ]) {
     assert.equal(hasOnlineSource(channel), true);

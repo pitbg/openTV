@@ -9,6 +9,7 @@ import { AtresplayerError, resolveAtresplayerHls } from './lib/atresplayer.mjs';
 import { MediasetError, resolveMediasetHls } from './lib/mediaset.mjs';
 import { createVBoxService, mergeVBoxChannels, VBoxError } from './lib/vbox.mjs';
 import { createEpgService } from './lib/epg.mjs';
+import { createLaSeptimaEmbedService, LaSeptimaEmbedError } from './lib/la-septima.mjs';
 import { vboxFfmpegArgs } from './lib/ffmpeg-args.mjs';
 
 const root = resolve(fileURLToPath(new URL('./public/', import.meta.url)));
@@ -25,6 +26,7 @@ const epg = createEpgService({
   ...(process.env.OPENTV_EPG_SHARE_ENABLED === 'false' ? { epgshareUrl: null } : {}),
   ...(process.env.OPENTV_EPG_ATRESMEDIA_ENABLED === 'false' ? { atresmediaUrl: null } : {})
 });
+const laSeptimaEmbed = createLaSeptimaEmbedService();
 const vboxTranscodeAudio = process.env.OPENTV_VBOX_TRANSCODE_AUDIO !== 'false' && process.env.OPENTV_VBOX_TRANSCODE_AUDIO !== '0';
 const vboxVideoEncoder = process.env.OPENTV_VBOX_VIDEO_ENCODER === 'vaapi' ? 'vaapi' : 'cpu';
 const vboxVaapiDevice = process.env.OPENTV_VBOX_VAAPI_DEVICE || '/dev/dri/renderD128';
@@ -54,6 +56,15 @@ const server = createServer(async (request, response) => {
     const [catalogue, local] = await Promise.all([catalog.get(), vbox.get()]);
     const channels = mergeVBoxChannels(catalogue.channels, local.channels);
     return reply(response, 200, await epg.get(channels, local.channels));
+  }
+
+  if (pathname === '/api/embeds/la-septima') {
+    response.setHeader('Cache-Control', 'no-store');
+    try { return reply(response, 200, await laSeptimaEmbed.resolve()); }
+    catch (error) {
+      if (!(error instanceof LaSeptimaEmbedError)) console.error('Error al consultar el directo de La Séptima:', error?.message);
+      return reply(response, 502, { error: error instanceof LaSeptimaEmbedError ? error.message : 'No se pudo consultar la emisión oficial.' });
+    }
   }
 
   const vboxStream = /^\/api\/vbox\/stream\/([a-z0-9-]+)$/.exec(pathname);

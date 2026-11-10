@@ -1,6 +1,6 @@
 // La TDT complementa el catálogo online: no desplaza una señal oficial válida.
 export function hasOnlineSource(channel) {
-  return Boolean(channel && (channel.dynamicStream || channel.embedUrl || channel.streams?.length));
+  return Boolean(channel && (channel.dynamicStream || channel.dynamicEmbed || channel.embedUrl || channel.streams?.length));
 }
 
 export function defaultSource(channel) {
