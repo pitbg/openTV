@@ -167,7 +167,7 @@ main:not(.guide-mode) .watch-section{max-width:1000px;margin-inline:auto}
 .card-now-track:not(.is-scrolling){margin-inline:auto}
 .card-now-text{flex:none;display:block;white-space:nowrap}
 .card-now-track.is-scrolling{animation:card-now-marquee var(--marquee-duration,14s) linear infinite}
-@keyframes card-now-marquee{to{transform:translateX(calc(-1 * var(--marquee-distance)))}}
+@keyframes card-now-marquee{to{transform:translateX(var(--marquee-offset))}}
 .channel-card:hover .card-now-track.is-scrolling,.channel-card:focus-within .card-now-track.is-scrolling{animation-play-state:paused}
 @media(prefers-reduced-motion:reduce){
   .card-now-track.is-scrolling{animation:none;max-width:100%}

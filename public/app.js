@@ -430,7 +430,7 @@ function scheduleCardMarquees() {
       clone.setAttribute('aria-hidden', 'true');
       track.append(clone);
       const distance = width + 18;
-      track.style.setProperty('--marquee-distance', `${distance}px`);
+      track.style.setProperty('--marquee-offset', `${-distance}px`);
       track.style.setProperty('--marquee-duration', `${Math.max(12, distance / 24)}s`);
       track.classList.add('is-scrolling');
     }
