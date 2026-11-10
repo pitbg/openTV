@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { gzipSync } from 'node:zlib';
-import { createEpgService, matchGuide, parseXmltv, xmltvTimestamp } from '../lib/epg.mjs';
+import { createEpgService, matchGuide, parseAtresmediaHtml, parseXmltv, xmltvTimestamp } from '../lib/epg.mjs';
 
 const testTime = Date.parse('2026-11-10T19:30:00Z'); // 20:30 en Madrid
 const vboxXml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -48,6 +48,22 @@ const correctedTdtXml = `<tv>
   <programme channel="Dejate.TV" start="20261110200000 +0100" stop="20261110210000 +0100"><title>Programa local</title></programme>
   <programme channel="13.TV" start="20261110200000 +0100" stop="20261110210000 +0100"><title>Informativo TRECE</title></programme>
 </tv>`;
+
+const atresmediaHtml = `<!doctype html><html><body>
+<div class="programacion-cadena principal a3series today"><ul class="programacion-listado">
+  <li class="programacion-item hr-60" data-start="1794333600000" data-end="1794337200000"><div class="item-wrapper"><h2 class="item-title">Bright minds</h2><p class="item-description">Un caso nuevo</p></div></li>
+  <li class="programacion-item hr-60" data-start="1794337200000" data-end="1794340800000"><div class="item-wrapper"><h2 class="item-title">Los misterios de Murdoch</h2></div></li>
+</ul></div>
+<div class="programacion-cadena neox today"><ul class="programacion-listado">
+  <li class="programacion-item" data-start="1794333600000" data-end="1794337200000"><h2 class="item-title">Los Simpson</h2></li>
+</ul></div>
+<div class="programacion-cadena principal a3series tomorrow"><ul class="programacion-listado">
+  <li class="programacion-item" data-start="1794420000000" data-end="1794423600000"><h2 class="item-title">Una serie de mañana</h2></li>
+</ul></div>
+<div class="programacion-cadena principal a3series aftertomorrow"><ul class="programacion-listado">
+  <li class="programacion-item" data-start="no-es-numero" data-end="1794423600000"><h2 class="item-title">Dato inválido</h2></li>
+</ul></div>
+</body></html>`;
 
 test('convierte horarios XMLTV con desfase UTC y decodifica los títulos', () => {
   assert.equal(xmltvTimestamp('20261110200000 +0100'), Date.parse('2026-11-10T19:00:00Z'));
@@ -99,10 +115,38 @@ test('corrige IDs reales de TDTChannels y reutiliza la guía accesible de Canal 
   assert.equal(guide.trece.now.title, 'Informativo TRECE');
 });
 
+test('extrae exclusivamente la parrilla española de Atresmedia con horarios exactos', () => {
+  const data = parseAtresmediaHtml(atresmediaHtml);
+  assert.equal(data.programmes.get('atreseries').length, 3);
+  assert.equal(data.programmes.get('atreseries')[0].title, 'Bright minds');
+  assert.equal(data.programmes.get('atreseries')[0].subtitle, 'Un caso nuevo');
+  assert.equal(data.programmes.get('neox')[0].title, 'Los Simpson');
+  assert.equal(data.programmes.has('antena-3'), false);
+  assert.throws(() => parseAtresmediaHtml('<div class="programacion-cadena a3series"></div>'), /No se encontró/);
+});
+
+test('Atresmedia completa Atreseries sin sustituir una EPG prioritaria válida', async () => {
+  const service = createEpgService({
+    now: () => 1794335400000, // Dentro de Bright minds.
+    externalUrl: null, epgshareUrl: null,
+    fetchImpl: async () => new Response(atresmediaHtml)
+  });
+  const first = await service.get([{ id: 'atreseries', name: 'atreseries' }], []);
+  assert.equal(first.sources.atresmedia.available, true);
+  assert.equal(first.channels.atreseries.now.title, 'Bright minds');
+  assert.equal(first.channels.atreseries.next.title, 'Los misterios de Murdoch');
+  assert.equal(first.channels.atreseries.source, 'atresmedia');
+  const priority = matchGuide([{ id: 'neox', name: 'Neox' }], [], [
+    { id: 'vbox', data: parseXmltv('<tv><channel id="Neox"><display-name>Neox</display-name></channel><programme channel="Neox" start="20261110190000 +0100" stop="20261110230000 +0100"><title>Guía local</title></programme></tv>') },
+    { id: 'atresmedia', data: parseAtresmediaHtml(atresmediaHtml) }
+  ], Date.parse('2026-11-10T19:30:00Z'));
+  assert.equal(priority.neox.now.title, 'Guía local');
+});
+
 test('EPGSHARE01 completa las cadenas que no cubren VBox ni TDTChannels', async () => {
   let requests = 0;
   const service = createEpgService({
-    vboxPlaylistUrl: null, now: () => testTime,
+    vboxPlaylistUrl: null, now: () => testTime, atresmediaUrl: null,
     externalUrl: 'https://www.tdtchannels.com/epg/TV.xml.gz',
     epgshareUrl: 'https://epgshare01.online/epgshare01/epg_ripper_ES1.xml.gz',
     fetchImpl: async url => {
@@ -136,7 +180,7 @@ test('descarga XMLTV y gzip una sola vez por TTL y conserva la EPG en caso de er
   let offline = false;
   const service = createEpgService({
     vboxPlaylistUrl: 'http://192.168.1.15:55555/vboxSimpleIptv.m3u8',
-    externalUrl: 'https://www.tdtchannels.com/epg/TV.xml.gz',
+    externalUrl: 'https://www.tdtchannels.com/epg/TV.xml.gz', atresmediaUrl: null,
     epgshareUrl: null,
     now: () => clock,
     vboxTtlMs: 1_000,

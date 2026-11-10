@@ -571,7 +571,7 @@ async function refreshEpg() {
     const data = await response.json();
     if (!data.channels || typeof data.channels !== 'object') throw new Error('Formato de EPG inválido');
     state.epg = data.channels;
-    const sourceNames = { vbox: 'VBox', tdtchannels: 'TDTChannels', epgshare: 'EPGSHARE01' };
+    const sourceNames = { vbox: 'VBox', tdtchannels: 'TDTChannels', epgshare: 'EPGSHARE01', atresmedia: 'Atresmedia' };
     const available = Object.entries(data.sources || {}).filter(([, source]) => source.cached).map(([id]) => sourceNames[id] || id);
     const current = state.channels.filter(channel => Boolean(data.channels[channel.id]?.now)).length;
     $('#guide-status').textContent = available.length

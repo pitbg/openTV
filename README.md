@@ -143,6 +143,7 @@ La vista **«Guía TV»** muestra una parrilla horizontal al estilo de la guía 
 - **VBox:** `http://192.168.1.15:55555/vboxXmltv.xml` (derivado automáticamente de la URL IPTV configurada). Su EPG tiene prioridad para los canales que sintoniza; se consulta como máximo cada 15 minutos.
 - **TDTChannels:** guía XMLTV oficial comprimida en [`TV.xml.gz`](https://www.tdtchannels.com/epg/TV.xml.gz), para completar los canales online y las ausencias del VBox. Se descarga como máximo cada hora. Puedes desactivarla con `OPENTV_EPG_TDT_ENABLED=false`.
 - **EPGSHARE01:** guía pública española [`ES1.xml.gz`](https://epgshare01.online/epgshare01/epg_ripper_ES1.xml.gz), como tercer respaldo para cadenas ausentes de TDTChannels, especialmente Atresmedia (atreseries, laSexta, Neox, Nova, MEGA, etc.) y otras autonómicas. Se consulta como máximo cada seis horas, sin retransmitir vídeo. Se desactiva con `OPENTV_EPG_SHARE_ENABLED=false`.
+- **Atresmedia:** parrilla española oficial de [Atreseries](https://atreseries.atresmedia.com/programacion/), con horarios de Atreseries y las otras cadenas del grupo. Se usa únicamente cuando VBox, TDTChannels y EPGSHARE01 no tienen programación actual; se consulta como máximo cada tres horas. Se desactiva con `OPENTV_EPG_ATRESMEDIA_ENABLED=false`. La parrilla internacional (`atresseries.com`) es distinta y no se utiliza.
 - **API:** `GET /api/epg` devuelve el programa actual y hasta 24 emisiones siguientes (cuando existen), junto al estado de las tres fuentes. Conserva la última guía correcta si una descarga falla. El navegador consulta el estado cada dos minutos y muestra cuántos canales tienen programación actual.
 
 La prioridad es **VBox → TDTChannels → EPGSHARE01** por canal; las dos últimas fuentes solo rellenan ausencias. Para usar únicamente la programación local desactiva **ambas** fuentes externas. Algunas emisoras sin guía publicada (por ejemplo HIT TV o servicios eventuales de noticias) pueden continuar sin EPG; openTV no inventa horarios ni programas. Puedes comprobar el contenido del VBox con `curl -fsS --max-time 8 'http://192.168.1.15:55555/vboxXmltv.xml' | head -c 500`.
@@ -185,6 +186,7 @@ Si NPM y openTV comparten una red de Docker, puedes evitar publicar el puerto a 
 | `OPENTV_VBOX_PLAYLIST_URL` | vacío | Lista IPTV del VBox; si está vacía, la integración TDT está desactivada |
 | `OPENTV_EPG_TDT_ENABLED` | `true` | Utiliza TDTChannels como complemento para la programación; `false` desactiva solo esta fuente |
 | `OPENTV_EPG_SHARE_ENABLED` | `true` | Añade la guía española EPGSHARE01 como tercer respaldo; `false` impide descargarla |
+| `OPENTV_EPG_ATRESMEDIA_ENABLED` | `true` | Usa la programación española oficial de Atresmedia como último respaldo; `false` la desactiva |
 | `OPENTV_VBOX_TRANSCODE_AUDIO` | `true` | Convierte audio de VBox a AAC usando FFmpeg; `false` retransmite el MPEG-TS original |
 | `OPENTV_VBOX_VIDEO_ENCODER` | `cpu` | `cpu` utiliza libx264; `vaapi` prefiere codificación Intel por hardware para el vídeo progresivo |
 | `OPENTV_VBOX_VAAPI_DEVICE` | `/dev/dri/renderD128` | Dispositivo DRM para FFmpeg, debe estar expuesto al contenedor |
