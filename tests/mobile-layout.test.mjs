@@ -14,12 +14,23 @@ test('la interfaz compacta no incorpora barras laterales, contadores ni el nombr
 });
 
 test('las tarjetas muestran logo y nombre; la programación está en la guía', () => {
-  const card = app.split('function makeCard(channel) {')[1].split('function tuneFromGuide(channel) {')[0];
+  const card = app.split('function makeCard(channel) {')[1].split('let cardMarqueeFrame = null')[0];
   assert.match(card, /logoContent\(channel, 'card-logo'\)/);
   assert.doesNotMatch(card, /card-epg|card-foot|card-region/);
   assert.match(app, /image\.onload\s*=\s*\(\)\s*=>\s*\{\s*fallback\.hidden = true/);
   assert.match(app, /if \(logos\.length\) \{\s*fallback\.hidden = true/);
   assert.match(app, /image\.onerror[\s\S]*?image\.remove\(\);\s*fallback\.hidden = false/);
+});
+
+test('solo aparece el programa actual con marquesina para títulos largos', () => {
+  const card = app.split('function makeCard(channel) {')[1].split('let cardMarqueeFrame = null')[0];
+  assert.match(card, /state\.epg\[channel\.id\]\?\.now/);
+  assert.doesNotMatch(card, /state\.epg\[channel\.id\]\?\.next/);
+  assert.match(card, /now\.title = `Ahora: \$\{current\.title\}`/);
+  assert.match(app, /if \(width <= viewport\.clientWidth \+ 1\) continue/);
+  assert.match(app, /clone\.setAttribute\('aria-hidden', 'true'\)/);
+  assert.match(css, /@keyframes card-now-marquee/);
+  assert.match(css, /@media\(prefers-reduced-motion:reduce\)\{\s*\.card-now-track\.is-scrolling\{animation:none/);
 });
 
 test('el reproductor y la guía no superan el ancho de la pantalla móvil', () => {

@@ -89,6 +89,7 @@ function setViewMode(mode) {
     button.setAttribute('aria-pressed', String(active));
   }
   if (guide) renderGuide();
+  else scheduleCardMarquees();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -400,8 +401,40 @@ function makeCard(channel) {
   favorite.onclick = event => { event.stopPropagation(); toggleFavorite(channel); };
   header.append(favorite);
   const name = document.createElement('div'); name.className = 'card-name'; name.textContent = channel.name;
-  card.append(header, name);
+  const current = state.epg[channel.id]?.now;
+  const now = document.createElement('div'); now.className = 'card-now';
+  if (current?.title) {
+    now.title = `Ahora: ${current.title}`;
+    const track = document.createElement('span'); track.className = 'card-now-track';
+    const title = document.createElement('span'); title.className = 'card-now-text'; title.textContent = current.title;
+    track.append(title); now.append(track);
+  }
+  card.append(header, name, now);
   return card;
+}
+
+let cardMarqueeFrame = null;
+function scheduleCardMarquees() {
+  if (cardMarqueeFrame !== null) cancelAnimationFrame(cardMarqueeFrame);
+  cardMarqueeFrame = requestAnimationFrame(() => {
+    cardMarqueeFrame = null;
+    for (const viewport of elements.grid.querySelectorAll('.card-now')) {
+      const track = viewport.firstElementChild;
+      if (!track) continue;
+      track.classList.remove('is-scrolling');
+      track.querySelector('[aria-hidden="true"]')?.remove();
+      const title = track.firstElementChild;
+      const width = title.getBoundingClientRect().width;
+      if (width <= viewport.clientWidth + 1) continue;
+      const clone = title.cloneNode(true);
+      clone.setAttribute('aria-hidden', 'true');
+      track.append(clone);
+      const distance = width + 18;
+      track.style.setProperty('--marquee-distance', `${distance}px`);
+      track.style.setProperty('--marquee-duration', `${Math.max(12, distance / 24)}s`);
+      track.classList.add('is-scrolling');
+    }
+  });
 }
 
 function tuneFromGuide(channel) {
@@ -484,6 +517,7 @@ function renderGuide() {
 function render() {
   const filtered = state.channels.filter(matches);
   elements.grid.replaceChildren(...filtered.map(makeCard));
+  if (state.viewMode === 'watch') scheduleCardMarquees();
   elements.empty.hidden = filtered.length !== 0 || state.channels.length === 0;
   document.querySelectorAll('[data-filter]').forEach(button => button.classList.toggle('active', button.dataset.filter === state.filter));
   renderGuide();
@@ -500,6 +534,7 @@ elements.search.addEventListener('input', () => { state.query = elements.search.
 $('#reset-filters').addEventListener('click', () => { elements.search.value = ''; state.query = ''; changeFilter('all'); });
 $('#view-watch').addEventListener('click', () => setViewMode('watch'));
 $('#view-guide').addEventListener('click', () => setViewMode('guide'));
+window.addEventListener('resize', scheduleCardMarquees);
 $('#guide-now').addEventListener('click', () => { $('#timeline-scroll').scrollTo({ left: 0, behavior: 'smooth' }); });
 $('#guide-prev-time').addEventListener('click', () => { $('#timeline-scroll').scrollBy({ left: -60 * TIMELINE_PIXELS_PER_MINUTE, behavior: 'smooth' }); });
 $('#guide-next-time').addEventListener('click', () => { $('#timeline-scroll').scrollBy({ left: 60 * TIMELINE_PIXELS_PER_MINUTE, behavior: 'smooth' }); });
