@@ -116,3 +116,18 @@ main.guide-mode .icon-button{width:31px;height:31px}
 @media(max-width:1220px){main.guide-mode{grid-template-columns:minmax(220px,280px) minmax(0,1fr)}}
 @media(max-width:900px){main.guide-mode{display:block}main.guide-mode .watch-section{position:static;max-width:430px;margin-bottom:25px}main.guide-mode .guide-section{margin-top:0}.timeline-scroll{max-height:60vh}}
 @media(max-width:760px){.view-controls{margin-bottom:17px;gap:7px}.view-button{padding:9px 13px;font-size:11px}.view-hint{display:none}.timeline-corner,.timeline-channel{flex-basis:138px;width:138px}.timeline-channel{gap:6px;padding:6px}.timeline-logo{flex-basis:30px;width:30px;height:30px}.timeline-channel-info strong{font-size:10px}.guide-heading h2{font-size:19px}.guide-controls{justify-content:flex-start}.timeline-scroll{min-height:250px}}
+
+/* Prevent horizontally scrolling channel suggestions from stretching the TV player. */
+@media(max-width:1150px){
+  .watch-layout{grid-template-columns:minmax(0,1fr)}
+  .watch-layout,.player-and-info,.player-stage,.queue-panel,.queue-items{min-width:0;max-width:100%}
+  .queue-panel{overflow:hidden}
+  .queue-items{width:100%;overflow-x:auto}
+}
+@media(max-width:760px){
+  .main-column,#main-content,.watch-section,.watch-layout,.player-and-info,.player-stage,.guide-section{min-width:0;max-width:100%}
+  .player-stage{width:100%;aspect-ratio:16/9}
+  .player-stage video,.player-stage #embedded-player{max-width:100%;max-height:100%}
+  main.guide-mode .watch-section{width:100%;max-width:100%}
+  .timeline-scroll{width:100%;max-width:100%}
+}
