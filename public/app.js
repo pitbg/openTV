@@ -196,8 +196,8 @@ function playChannel() {
   const channel = activeChannel();
   if (!channel) return;
   if (state.sourceMode === 'local' && channel.localStream) return playLocalStream(channel);
-  if (channel.dynamicStream) return playDynamicStream(channel);
   if (channel.dynamicEmbed) return playDynamicEmbedded(channel);
+  if (channel.dynamicStream) return playDynamicStream(channel);
   if (channel.embedUrl && (channel.preferEmbed || !channel.streams.length)) playEmbedded();
   else playStream(0);
 }
@@ -278,7 +278,6 @@ async function playDynamicStream(channel) {
     playStream(0);
   } catch (error) {
     if (attempt !== state.playbackAttempt || activeChannel()?.id !== channel.id) return;
-    if (channel.dynamicEmbed && state.sourceMode === 'online') return playDynamicEmbedded(channel);
     if (fallbackToLocal(channel, error.message)) return;
     showPlaybackError(`No se ha podido abrir ${channel.name}`, `${error.message} Puedes verlo en la web oficial del canal.`);
   }
@@ -288,14 +287,12 @@ async function playStream(index = state.sourceIndex) {
   const channel = activeChannel();
   if (!channel) return;
   if (!channel.streams.length) {
-    if (channel.dynamicEmbed && state.sourceMode === 'online') return playDynamicEmbedded(channel);
     if (channel.embedUrl && !channel.dynamicStream) return playEmbedded();
     if (fallbackToLocal(channel, 'No hay señales HLS disponibles')) return;
     showPlaybackError('Sin señal directa disponible', 'Esta cadena solo ofrece su emisión en su propia web. Puedes abrirla con el botón inferior.');
     return;
   }
   if (index >= channel.streams.length) {
-    if (channel.dynamicEmbed && state.sourceMode === 'online') return playDynamicEmbedded(channel);
     if (channel.embedUrl && !channel.dynamicStream) return playEmbedded();
     if (fallbackToLocal(channel, 'Todas las fuentes HLS han fallado')) return;
     showPlaybackError('No podemos reproducir este canal aquí', 'No ha funcionado ninguna fuente HLS. La cadena puede limitar su acceso o impedir la reproducción fuera de su web oficial.');
@@ -412,7 +409,7 @@ function makeCard(channel) {
   }
   const foot = document.createElement('div'); foot.className = 'card-foot';
   const signal = document.createElement('span'); signal.className = channel.localStream || hasOnlineSource(channel) ? '' : 'not-embedded';
-  const sourceLabel = channel.dynamicStream && channel.dynamicEmbed ? '● HLS / YOUTUBE' : channel.dynamicStream ? '● HLS DINÁMICO' : channel.dynamicEmbed ? '● PLAYER OFICIAL' : channel.preferEmbed && channel.embedUrl ? '● PLAYER OFICIAL' : channel.streams.length ? '● SEÑAL ONLINE' : channel.embedUrl ? '● PLAYER OFICIAL' : channel.localStream ? '● TDT LOCAL' : '↗ WEB OFICIAL';
+  const sourceLabel = channel.dynamicStream ? '● HLS DINÁMICO' : channel.dynamicEmbed ? '● PLAYER OFICIAL' : channel.preferEmbed && channel.embedUrl ? '● PLAYER OFICIAL' : channel.streams.length ? '● SEÑAL ONLINE' : channel.embedUrl ? '● PLAYER OFICIAL' : channel.localStream ? '● TDT LOCAL' : '↗ WEB OFICIAL';
   signal.textContent = hasOnlineSource(channel) && channel.localStream ? `${sourceLabel} · TDT` : sourceLabel;
   const arrow = document.createElement('span'); arrow.textContent = '↗';
   foot.append(signal, arrow); card.append(header, name, region);

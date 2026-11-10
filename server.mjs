@@ -10,7 +10,6 @@ import { MediasetError, resolveMediasetHls } from './lib/mediaset.mjs';
 import { createVBoxService, mergeVBoxChannels, VBoxError } from './lib/vbox.mjs';
 import { createEpgService } from './lib/epg.mjs';
 import { createLaSeptimaEmbedService, LaSeptimaEmbedError } from './lib/la-septima.mjs';
-import { createLaSeptimaHlsService, YoutubeHlsError } from './lib/youtube-hls.mjs';
 import { vboxFfmpegArgs } from './lib/ffmpeg-args.mjs';
 
 const root = resolve(fileURLToPath(new URL('./public/', import.meta.url)));
@@ -28,7 +27,6 @@ const epg = createEpgService({
   ...(process.env.OPENTV_EPG_ATRESMEDIA_ENABLED === 'false' ? { atresmediaUrl: null } : {})
 });
 const laSeptimaEmbed = createLaSeptimaEmbedService();
-const laSeptimaHls = createLaSeptimaHlsService({ embedService: laSeptimaEmbed });
 const vboxTranscodeAudio = process.env.OPENTV_VBOX_TRANSCODE_AUDIO !== 'false' && process.env.OPENTV_VBOX_TRANSCODE_AUDIO !== '0';
 const vboxVideoEncoder = process.env.OPENTV_VBOX_VIDEO_ENCODER === 'vaapi' ? 'vaapi' : 'cpu';
 const vboxVaapiDevice = process.env.OPENTV_VBOX_VAAPI_DEVICE || '/dev/dri/renderD128';
@@ -66,15 +64,6 @@ const server = createServer(async (request, response) => {
     catch (error) {
       if (!(error instanceof LaSeptimaEmbedError)) console.error('Error al consultar el directo de La Séptima:', error?.message);
       return reply(response, 502, { error: error instanceof LaSeptimaEmbedError ? error.message : 'No se pudo consultar la emisión oficial.' });
-    }
-  }
-
-  if (pathname === '/api/streams/la-septima') {
-    response.setHeader('Cache-Control', 'no-store');
-    try { return reply(response, 200, await laSeptimaHls.resolve()); }
-    catch (error) {
-      if (!(error instanceof YoutubeHlsError || error instanceof LaSeptimaEmbedError)) console.error('Error al consultar HLS de La Séptima:', error?.message);
-      return reply(response, 502, { error: error instanceof YoutubeHlsError || error instanceof LaSeptimaEmbedError ? error.message : 'No se pudo consultar el HLS de YouTube.' });
     }
   }
 
