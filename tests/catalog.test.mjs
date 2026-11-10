@@ -60,6 +60,7 @@ test('integra La Séptima como canal nacional con su ficha oficial y sin inventa
   assert.equal(channel.region, 'Nacional');
   assert.equal(channel.website, 'https://laseptima.com/la-septima-tv-directo/');
   assert.equal(channel.streams.length, 0);
+  assert.equal(channel.dynamicStream, true);
   assert.equal(channel.dynamicEmbed, true);
 });
 
