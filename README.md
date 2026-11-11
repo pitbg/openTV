@@ -176,6 +176,18 @@ Puedes configurar un *Proxy Host* que apunte a la IP privada del servidor y al p
 
 Si NPM y openTV comparten una red de Docker, puedes evitar publicar el puerto a toda la LAN y configurar NPM contra `opentv:3080`. Adapta las redes de Compose a las de tu instalación; no es obligatorio para funcionar.
 
+### Vista previa al compartir en WhatsApp
+
+openTV incluye favicon, icono de inicio para móviles y una tarjeta social con el título, la descripción y una imagen de 1200 × 630 píxeles. Para que WhatsApp y otras redes puedan mostrarla, el enlace y la imagen deben ser accesibles **públicamente por HTTPS**: una IP privada o una dirección exclusiva de Tailscale no es suficiente.
+
+Si utilizas un dominio público detrás de un proxy, añade su URL base al `.env` del directorio del proyecto:
+
+```env
+OPENTV_PUBLIC_URL=https://tv.tu-dominio.es
+```
+
+Después aplica los cambios con `docker compose up -d --build`. Si no defines esa variable, openTV construye los enlaces sociales desde el dominio de la petición y el protocolo indicado por el proxy (`X-Forwarded-Proto`). Puedes verificar los metadatos con `curl -s https://tv.tu-dominio.es/ | grep 'og:image'` y la imagen con `curl -I https://tv.tu-dominio.es/social-preview.png`. WhatsApp puede conservar en caché la vista previa anterior durante un tiempo.
+
 ### Variables de Compose
 
 | Variable | Valor inicial | Descripción |
@@ -183,6 +195,7 @@ Si NPM y openTV comparten una red de Docker, puedes evitar publicar el puerto a 
 | `OPENTV_BIND` | `127.0.0.1` | Interfaz de red del host donde se publica el puerto |
 | `OPENTV_PORT` | `3080` | Puerto externo del servicio |
 | `OPENTV_CONTAINER_NAME` | `opentv` | Nombre del contenedor; permite probar otra instancia sin colisiones |
+| `OPENTV_PUBLIC_URL` | vacío | URL pública HTTPS del sitio, usada en las vistas previas al compartir enlaces |
 | `OPENTV_CATALOG_TTL_MS` | `21600000` | Tiempo de actualización del catálogo, en milisegundos (configurable en `compose.yml`) |
 | `OPENTV_VBOX_PLAYLIST_URL` | vacío | Lista IPTV del VBox; si está vacía, la integración TDT está desactivada |
 | `OPENTV_EPG_TDT_ENABLED` | `true` | Utiliza TDTChannels como complemento para la programación; `false` desactiva solo esta fuente |
