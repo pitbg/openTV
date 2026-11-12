@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="openTV. La tele, sin complicaciones. Televisión española en directo y guía TV.">
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b0e17"/>
+      <stop offset="1" stop-color="#17253a"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="65%" cy="42%" r="66%">
+      <stop offset="0" stop-color="#8fd36a" stop-opacity=".27"/>
+      <stop offset="1" stop-color="#8fd36a" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#233e36"/>
+      <stop offset="1" stop-color="#121d32"/>
+    </linearGradient>
+    <pattern id="grid" width="52" height="52" patternUnits="userSpaceOnUse">
+      <path d="M 52 0 L 0 0 0 52" fill="none" stroke="#d7f4dc" stroke-opacity=".055" stroke-width="1"/>
+    </pattern>
+    <filter id="shadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#000" flood-opacity=".45"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#background)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <rect x="44" y="45" width="1112" height="540" rx="36" fill="none" stroke="#a6e396" stroke-opacity=".12" stroke-width="2"/>
+
+  <g transform="translate(83 77)">
+    <rect x="0" y="0" width="55" height="51" rx="15" fill="#adf47b" transform="rotate(-6 27.5 25.5)"/>
+    <path d="M22 13 42 25.5 22 38Z" fill="#112318"/>
+    <circle cx="54" cy="0" r="7" fill="#ffc478"/>
+    <text x="76" y="37" font-family="DejaVu Sans,Arial,sans-serif" font-size="46" font-weight="bold" letter-spacing="-2" fill="#f4f6f9">open</text>
+    <text x="199" y="37" font-family="DejaVu Sans,Arial,sans-serif" font-size="46" font-weight="bold" letter-spacing="-2" fill="#adf47b">TV</text>
+    <circle cx="271" cy="34" r="5" fill="#ffc478"/>
+  </g>
+
+  <g font-family="DejaVu Sans,Arial,sans-serif">
+    <rect x="84" y="199" width="218" height="36" rx="18" fill="#253b2b" stroke="#8ec979" stroke-opacity=".55"/>
+    <circle cx="106" cy="217" r="5" fill="#ff766e"/>
+    <text x="122" y="222" font-size="15" font-weight="bold" letter-spacing="1" fill="#d1efc4">TELEVISIÓN EN DIRECTO</text>
+
+    <text x="81" y="330" font-size="69" font-weight="bold" letter-spacing="-3" fill="#f5f7fa">La tele,</text>
+    <text x="81" y="417" font-size="63" font-weight="bold" letter-spacing="-3" fill="#adf47b">sin complicaciones.</text>
+    <text x="84" y="481" font-size="23" fill="#acb8c9">Tus canales favoritos y la guía TV</text>
+    <text x="84" y="513" font-size="23" fill="#acb8c9">en un solo lugar.</text>
+  </g>
+
+  <g filter="url(#shadow)" transform="translate(745 160)">
+    <rect width="367" height="258" rx="24" fill="#161d2b" stroke="#43505f" stroke-width="2"/>
+    <rect x="14" y="14" width="339" height="192" rx="15" fill="url(#screen)"/>
+    <path d="M14 113H353M183 14V206" stroke="#c5eece" stroke-opacity=".06" stroke-width="2"/>
+    <circle cx="183" cy="110" r="45" fill="#adf47b" fill-opacity=".16"/>
+    <circle cx="183" cy="110" r="32" fill="#adf47b"/>
+    <path d="M176 93 198 110 176 127Z" fill="#102118"/>
+    <rect x="28" y="28" width="102" height="27" rx="8" fill="#090e17" fill-opacity=".78"/>
+    <circle cx="43" cy="41.5" r="4" fill="#fa716a"/>
+    <text x="54" y="46.5" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" font-weight="bold" letter-spacing=".7" fill="#ffffff">EN DIRECTO</text>
+    <rect x="25" y="225" width="170" height="10" rx="5" fill="#8195a6" fill-opacity=".55"/>
+    <rect x="25" y="225" width="108" height="10" rx="5" fill="#adf47b"/>
+    <circle cx="333" cy="230" r="9" fill="#adf47b"/>
+  </g>
+  <g transform="translate(844 440)" font-family="DejaVu Sans,Arial,sans-serif">
+    <rect width="267" height="67" rx="15" fill="#252f3d" stroke="#4b5966" stroke-width="2"/>
+    <rect x="15" y="13" width="45" height="41" rx="9" fill="#adf47b"/>
+    <path d="M32 25 47 34 32 43Z" fill="#12251a"/>
+    <text x="75" y="29" font-size="15" font-weight="bold" fill="#edf1f6">Guía TV</text>
+    <text x="75" y="48" font-size="12" fill="#a3b4c3">¿Qué están emitiendo?</text>
+  </g>
+</svg>

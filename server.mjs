@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { createReadStream, statSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Readable } from 'node:stream';
@@ -11,6 +12,7 @@ import { createVBoxService, mergeVBoxChannels, VBoxError } from './lib/vbox.mjs'
 import { createEpgService } from './lib/epg.mjs';
 import { createLaSeptimaEmbedService, LaSeptimaEmbedError } from './lib/la-septima.mjs';
 import { vboxFfmpegArgs } from './lib/ffmpeg-args.mjs';
+import { renderSocialHtml } from './lib/social-meta.mjs';
 
 const root = resolve(fileURLToPath(new URL('./public/', import.meta.url)));
 const vendor = resolve(fileURLToPath(new URL('./node_modules/hls.js/dist/hls.min.js', import.meta.url)));
@@ -87,6 +89,11 @@ const server = createServer(async (request, response) => {
   try {
     const stat = statSync(file);
     if (!stat.isFile()) throw Error('Not a file');
+    if (file === resolve(root, 'index.html')) {
+      const html = renderSocialHtml(await readFile(file, 'utf8'), request.headers, process.env.OPENTV_PUBLIC_URL, Boolean(request.socket.encrypted));
+      response.writeHead(200, { 'Content-Type': mime['.html'], 'Content-Length': Buffer.byteLength(html), 'Cache-Control': 'no-store' });
+      return response.end(request.method === 'HEAD' ? undefined : html);
+    }
     const revalidate = pathname === '/' || pathname === '/app.js' || pathname === '/styles.css';
     response.writeHead(200, { 'Content-Type': mime[extname(file)] || 'application/octet-stream', 'Content-Length': stat.size, 'Cache-Control': revalidate ? 'no-cache' : 'public, max-age=3600' });
     if (request.method === 'HEAD') return response.end();
